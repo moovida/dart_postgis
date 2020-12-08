@@ -259,7 +259,7 @@ class PostgisDb {
     res.forEach((QueryResultRow map) {
       var geomBytes = map.getAt(0);
       if (geomBytes != null) {
-        Geometry geom = PostgisGeomReader(geomBytes).get();
+        Geometry geom = BinaryParser().parse(geomBytes);
         var pkValue = map.getAt(1);
         if (userDataField != null) {
           geom.setUserData(map.getAt(2));
@@ -343,7 +343,6 @@ class PostgisDb {
       var geomBytes = map.get(queryResult.geomName);
       if (geomBytes != null) {
         Geometry geom = BinaryParser().parse(geomBytes);
-        //   PostgisGeomReader(geomBytes).get();
         queryResult.geoms.add(geom);
       }
       map
@@ -397,5 +396,9 @@ class PostgisDb {
 
   Future<QueryResult> select(String sql) async {
     return await _postgresDb.select(sql);
+  }
+
+  Future<dynamic> transaction(Function transactionOperations) async {
+    return await _postgresDb.transaction(transactionOperations);
   }
 }
