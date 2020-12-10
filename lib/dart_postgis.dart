@@ -11,3 +11,4 @@ import 'package:proj4dart/proj4dart.dart' as PROJ;
 part 'src/com/hydrologis/dart_postgis/postgis.dart';
 part 'src/com/hydrologis/dart_postgis/core/utils.dart';
 part 'src/com/hydrologis/dart_postgis/core/parsers.dart';
+part 'src/com/hydrologis/dart_postgis/core/writers.dart';

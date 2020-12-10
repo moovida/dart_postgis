@@ -8,7 +8,7 @@ part of dart_postgis;
 /// Original authors:
 /// (C) 2005 Markus Schaber, markus.schaber@logix-tt.com
 /// (C) 2015 Phillip Ross, phillip.w.g.ross@gmail.com
-/// Dart port"
+/// Dart port:
 /// 2020 Antonello Andrea (www.hydrologis.com)
 
 abstract class ByteGetter {
@@ -116,10 +116,11 @@ abstract class ValueGetter {
   }
 }
 
-class XDR extends ValueGetter {
+/// Big endian
+class XDRGetter extends ValueGetter {
   static final int NUMBER = 0;
 
-  XDR(ByteGetter data) : super(data, NUMBER);
+  XDRGetter(ByteGetter data) : super(data, NUMBER);
 
   @override
   int getIntAt(int index) {
@@ -159,10 +160,11 @@ class XDR extends ValueGetter {
   }
 }
 
-class NDR extends ValueGetter {
+/// Little endian
+class NDRGetter extends ValueGetter {
   static final int NUMBER = 1;
 
-  NDR(ByteGetter data) : super(data, NUMBER);
+  NDRGetter(ByteGetter data) : super(data, NUMBER);
 
   @override
   int getIntAt(int index) {
@@ -225,11 +227,11 @@ class BinaryParser {
   ///
   /// @return the ValueGetter
   static ValueGetter valueGetterForEndian(ByteGetter bytes) {
-    if (bytes.get(0) == XDR.NUMBER) {
+    if (bytes.get(0) == XDRGetter.NUMBER) {
       // XDR
-      return XDR(bytes);
-    } else if (bytes.get(0) == NDR.NUMBER) {
-      return NDR(bytes);
+      return XDRGetter(bytes);
+    } else if (bytes.get(0) == NDRGetter.NUMBER) {
+      return NDRGetter(bytes);
     } else {
       throw ArgumentError("Unknown Endian type: ${bytes.get(0)}");
     }

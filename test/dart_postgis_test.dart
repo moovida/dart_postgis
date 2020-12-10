@@ -5,6 +5,7 @@ import 'package:test/test.dart';
 
 void main() {
   var sqlName = SqlName("test");
+  var sqlName2 = SqlName("test2");
 
   group('Test connection', () {
     PostgisDb db;
@@ -14,7 +15,7 @@ void main() {
         "test",
         port: 5432,
         user: "postgres",
-        // pwd: "postgres",
+        pwd: "postgres",
       );
       await db.open();
 
@@ -39,7 +40,7 @@ void main() {
       expect(geometryColumn.geometryType.typeName, "GEOMETRY");
     });
 
-    test('Table data test', () async {
+    test('Test geometry reading', () async {
       PGQueryResult result =
           await db.getTableData(sqlName, where: "name like 'Point%'");
       expect(result.data.length, 2);
@@ -83,6 +84,26 @@ void main() {
       expect(result.length, 1);
       expect(result[0].toText(),
           "POLYGON ((0 0, 10 0, 10 10, 0 10, 0 0), (1 1, 1 2, 2 2, 2 1, 1 1))");
+    });
+    test('Test geometry writing', () async {
+      await db.transaction((ctx) async {
+        await ctx.execute("drop table if exists ${sqlName2.name} cascade;");
+        await ctx.execute(
+            "CREATE TABLE ${sqlName2.name} (name varchar, geom geometry(geometry, 4326));");
+      });
+
+      var wktReader = WKTReader();
+      var geom = wktReader.read("POINT(-2 2)");
+      geom.setSRID(4326);
+      var geomBytes = BinaryWriter().writeHexed(geom);
+      print(geomBytes);
+
+      var sql = "insert into ${sqlName2.name} values (?, ?)";
+      await db.execute(sql, arguments: ['Point2', geomBytes]);
+
+      PGQueryResult result =
+          await db.getTableData(sqlName2, where: "name = 'Point2'");
+      expect(result.data.length, 1);
     });
   });
 }
