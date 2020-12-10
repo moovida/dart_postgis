@@ -54,8 +54,8 @@ class PostgisDb {
 
   String get version => pgVersion;
 
-  void close() {
-    _postgresDb?.close();
+  Future<void> close() async {
+    await _postgresDb?.close();
   }
 
   Future<GeometryColumn> getGeometryColumnsForTable(SqlName tableName) async {
