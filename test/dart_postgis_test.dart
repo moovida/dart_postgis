@@ -93,19 +93,50 @@ void main() {
       });
 
       var wktReader = WKTReader();
-      var geom = wktReader.read("POINT(-2 2)");
-      geom.setSRID(4326);
-      var geomBytes = BinaryWriter().writeHexed(geom);
-      print(geomBytes);
-
-      var sql = "insert into ${sqlName2.name} values (?, ?)";
-      await db.execute(sql, arguments: ['Point2', geomBytes]);
-
-      PGQueryResult result =
-          await db.getTableData(sqlName2, where: "name = 'Point2'");
-      expect(result.data.length, 1);
+      var geomTxt = "POINT (-2 2)";
+      var name = 'Point2';
+      await checkInsertSelect(wktReader, geomTxt, sqlName2, db, name);
+      geomTxt = "MULTIPOINT ((2 1), (1 2))";
+      name = 'MultiPoint';
+      await checkInsertSelect(wktReader, geomTxt, sqlName2, db, name);
+      geomTxt = "LINESTRING (0 0, 1 1, 2 1, 2 2)";
+      name = 'LineString';
+      await checkInsertSelect(wktReader, geomTxt, sqlName2, db, name);
+      geomTxt = "MULTILINESTRING ((1 0, 0 1, 3 2), (3 2, 5 4))";
+      name = 'MultiLineString';
+      await checkInsertSelect(wktReader, geomTxt, sqlName2, db, name);
+      geomTxt =
+          "POLYGON ((0 0, 4 0, 4 4, 0 4, 0 0), (1 1, 2 1, 2 2, 1 2, 1 1))";
+      name = 'Polygon';
+      await checkInsertSelect(wktReader, geomTxt, sqlName2, db, name);
+      geomTxt =
+          "MULTIPOLYGON (((1 1, 3 1, 3 3, 1 3, 1 1), (1 1, 2 1, 2 2, 1 2, 1 1)), ((-1 -1, -1 -2, -2 -2, -2 -1, -1 -1)))";
+      name = 'MultiPolygon';
+      await checkInsertSelect(wktReader, geomTxt, sqlName2, db, name);
+      geomTxt =
+          "POLYGON ((0 0, 10 0, 10 10, 0 10, 0 0), (1 1, 1 2, 2 2, 2 1, 1 1))";
+      name = 'PolygonWithHole';
+      await checkInsertSelect(wktReader, geomTxt, sqlName2, db, name);
+      geomTxt =
+          "GEOMETRYCOLLECTION (POLYGON ((1 1, 2 1, 2 2, 1 2, 1 1)), POINT (2 3), LINESTRING (2 3, 3 4))";
+      name = 'geometryCollection';
+      await checkInsertSelect(wktReader, geomTxt, sqlName2, db, name);
     });
   });
+}
+
+Future checkInsertSelect(WKTReader wktReader, String geomTxt, SqlName sqlName2,
+    PostgisDb db, String name) async {
+  var geom = wktReader.read(geomTxt);
+  geom.setSRID(4326);
+  var geomBytes = BinaryWriter().writeHexed(geom);
+  // print(geomBytes);
+  var sql = "insert into ${sqlName2.name} values (?, ?)";
+  await db.execute(sql, arguments: [name, geomBytes]);
+  PGQueryResult result =
+      await db.getTableData(sqlName2, where: "name = '$name'");
+  expect(result.data.length, 1);
+  expect(result.geoms[0].toText(), geomTxt);
 }
 
 const INIT_SQL = [
