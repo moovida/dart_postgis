@@ -327,7 +327,7 @@ class PostgisDb {
         wheresList.add(spatialindexBBoxWherePiece);
       }
     }
-    if (where != null) {
+    if (where != null && where.isNotEmpty) {
       wheresList.add(where);
     }
 
