@@ -4,6 +4,8 @@ part of dart_postgis;
 ///
 /// @author Andrea Antonello (www.hydrologis.com)
 class PostgisDb {
+  static const String HM_STYLES_TABLE = "hm_styles";
+
   PostgresqlDb _postgresDb;
 
   final String _host;
@@ -400,5 +402,62 @@ class PostgisDb {
 
   Future<dynamic> transaction(Function transactionOperations) async {
     return await _postgresDb.transaction(transactionOperations);
+  }
+
+  /// Get the SLD xml for a given table.
+  Future<String> getSld(SqlName tableName) async {
+    await checkStyleTable();
+    String name = tableName.name.toLowerCase();
+    String sql = "select sld from " +
+        HM_STYLES_TABLE +
+        " where lower(tablename)='" +
+        name +
+        "'";
+    var res = await _postgresDb.select(sql);
+    if (res.length == 1) {
+      var row = res.first;
+      String sldString = row.get('sld');
+      return sldString;
+    }
+    return null;
+  }
+
+  /// Update the sld string in the geopackage
+  Future<void> updateSld(SqlName tableName, String sldString) async {
+    await checkStyleTable();
+
+    String name = tableName.name.toLowerCase();
+    String sql = """update $HM_STYLES_TABLE 
+        set sld=? where lower(tablename)='$name'
+        """;
+    var updated = await _postgresDb.execute(sql, arguments: [sldString]);
+    if (updated == 0) {
+      // need to insert
+      String sql = """insert into $HM_STYLES_TABLE 
+      (tablename, sld) values
+        ('$name', ?);
+        """;
+      await _postgresDb.execute(sql, arguments: [sldString]);
+    }
+  }
+
+  Future<void> checkStyleTable() async {
+    if (!await _postgresDb.hasTable(SqlName(HM_STYLES_TABLE))) {
+      var createTablesQuery = '''
+      CREATE TABLE $HM_STYLES_TABLE (  
+        tablename TEXT NOT NULL,
+        sld TEXT,
+        simplified TEXT
+      );
+      CREATE UNIQUE INDEX ${HM_STYLES_TABLE}_tablename_idx ON $HM_STYLES_TABLE (tablename);
+    ''';
+      var split = createTablesQuery.replaceAll("\n", "").trim().split(";");
+      for (int i = 0; i < split.length; i++) {
+        var sql = split[i].trim();
+        if (sql.isNotEmpty) {
+          await _postgresDb.execute(sql);
+        }
+      }
+    }
   }
 }
