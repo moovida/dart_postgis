@@ -335,7 +335,7 @@ class PostgisDb {
     }
 
     if (limit != null) {
-      sql += "limit $limit";
+      sql += " limit $limit";
     }
     var result = await _postgresDb.select(sql);
     result.forEach((QueryResultRow map) {
