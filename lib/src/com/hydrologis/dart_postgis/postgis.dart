@@ -97,19 +97,21 @@ class PostgisDb {
         ")=Lower(?)";
 
     queryResult = await _postgresDb.select(sql, [tableName.name]);
+    GeometryColumn gc;
+    if (queryResult.length == 1) {
+      gc = GeometryColumn();
+      var row = queryResult.first;
+      String name = row.getAt(0);
+      gc.tableName = SqlName(name);
+      gc.geometryColumnName = row.getAt(1);
+      String type = row.getAt(2);
+      gc.geometryType = EGeometryType.forWktName(type);
+      gc.coordinatesDimension = row.getAt(3);
+      gc.srid = row.getAt(4);
 
-    GeometryColumn gc = GeometryColumn();
-    var row = queryResult.first;
-    String name = row.getAt(0);
-    gc.tableName = SqlName(name);
-    gc.geometryColumnName = row.getAt(1);
-    String type = row.getAt(2);
-    gc.geometryType = EGeometryType.forWktName(type);
-    gc.coordinatesDimension = row.getAt(3);
-    gc.srid = row.getAt(4);
-
-    if (tablesWithIndex.contains(name)) {
-      gc.isSpatialIndexEnabled = 1;
+      if (tablesWithIndex.contains(name)) {
+        gc.isSpatialIndexEnabled = 1;
+      }
     }
     return gc;
   }
