@@ -466,4 +466,8 @@ class PostgisDb {
       }
     }
   }
+
+  dynamic geometryToSql(Geometry geom) {
+    return BinaryWriter().writeHexed(geom);
+  }
 }
