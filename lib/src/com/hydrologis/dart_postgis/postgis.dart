@@ -43,8 +43,14 @@ class PostgisDb {
 
   Future<bool> open({Function populateFunction}) async {
     bool opened = await _postgresDb.open(populateFunction: populateFunction);
+    if (!opened) {
+      return false;
+    }
 
     var res = await _postgresDb.select("SELECT PostGIS_full_version();");
+    if (res == null) {
+      return false;
+    }
     pgVersion = res.first.getAt(0);
 
     return opened;
