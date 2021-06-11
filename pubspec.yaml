@@ -21,7 +21,7 @@ dependencies:
   #      url: https://github.com/moovida/dart_jts.git
 
   # MIT
-  proj4dart: ^1.0.5
+  proj4dart: ^2.0.0
 
   dart_hydrologis_utils: ^0.5.1
 
