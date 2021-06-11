@@ -1,6 +1,6 @@
 name: dart_postgis
 description: A module to support postgis.
-version: 0.1.0+3
+version: 0.1.0+4
 homepage: https://github.com/moovida/dart_postgis
 repository: https://github.com/moovida/dart_postgis
 issue_tracker: https://github.com/moovida/dart_postgis/issues
