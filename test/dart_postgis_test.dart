@@ -8,7 +8,7 @@ void main() {
   var sqlName2 = SqlName("test2");
 
   group('Test connection', () {
-    PostgisDb db;
+    late PostgisDb db;
     setUpAll(() async {
       db = PostgisDb(
         "localhost",
@@ -34,7 +34,7 @@ void main() {
       expect(columns.length, 2);
 
       var geometryColumn = await db.getGeometryColumnsForTable(sqlName);
-      expect(geometryColumn.srid, 4326);
+      expect(geometryColumn!.srid, 4326);
       expect(geometryColumn.coordinatesDimension, 2);
       expect(geometryColumn.geometryColumnName, "geom");
       expect(geometryColumn.geometryType.typeName, "GEOMETRY");
@@ -127,7 +127,7 @@ void main() {
 
 Future checkInsertSelect(WKTReader wktReader, String geomTxt, SqlName sqlName2,
     PostgisDb db, String name) async {
-  var geom = wktReader.read(geomTxt);
+  var geom = wktReader.read(geomTxt)!;
   geom.setSRID(4326);
   var geomBytes = BinaryWriter().writeHexed(geom);
   // print(geomBytes);

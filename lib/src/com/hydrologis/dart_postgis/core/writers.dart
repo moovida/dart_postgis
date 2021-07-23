@@ -19,10 +19,10 @@ abstract class ByteSetter {
 }
 
 class BinaryByteSetter extends ByteSetter {
-  List<int> array;
+  late List<int> array;
 
   BinaryByteSetter(int length) {
-    array = List(length);
+    array = List.filled(length, 0);
   }
 
   @override
@@ -36,7 +36,7 @@ class BinaryByteSetter extends ByteSetter {
 
   @override
   String toString() {
-    List<int> arr = List(array.length);
+    List<int> arr = List.filled(array.length, 0);
     for (int i = 0; i < array.length; i++) {
       arr[i] = array[i] & 0xFF;
     }
@@ -48,7 +48,7 @@ class StringByteSetter extends ByteSetter {
   static final List<int> hextypes = "0123456789ABCDEF".codeUnits;
   final List<int> rep;
 
-  StringByteSetter(int length) : rep = List(length * 2);
+  StringByteSetter(int length) : rep = List.filled(length * 2, 0);
 
   @override
   void set(int b, int index) {
@@ -342,25 +342,25 @@ class BinaryWriter {
 
     switch (geometryType) {
       case EGeometryType.POINT:
-        writePoint(geom.getCoordinate(), dest);
+        writePoint(geom.getCoordinate() ?? Coordinate.empty2D(), dest);
         break;
       case EGeometryType.LINESTRING:
-        writeLineString(geom, dest);
+        writeLineString(geom as LineString, dest);
         break;
       case EGeometryType.POLYGON:
-        writePolygon(geom, dest);
+        writePolygon(geom as Polygon, dest);
         break;
       case EGeometryType.MULTIPOINT:
-        writeMultiPoint(geom, dest);
+        writeMultiPoint(geom as MultiPoint, dest);
         break;
       case EGeometryType.MULTILINESTRING:
-        writeMultiLineString(geom, dest);
+        writeMultiLineString(geom as MultiLineString, dest);
         break;
       case EGeometryType.MULTIPOLYGON:
-        writeMultiPolygon(geom, dest);
+        writeMultiPolygon(geom as MultiPolygon, dest);
         break;
       case EGeometryType.GEOMETRYCOLLECTION:
-        writeCollection(geom, dest);
+        writeCollection(geom as GeometryCollection, dest);
         break;
       default:
         throw ArgumentError("Unknown Geometry Type: $geometryType");
@@ -374,13 +374,13 @@ class BinaryWriter {
     dest.setDouble(geom.y);
 
     var z = geom.z;
-    if (z != null && !z.isNaN) {
+    if (!z.isNaN) {
       //geom.dimension == 3) {
       dest.setDouble(z);
     }
 
     var m = geom.getM();
-    if (m != null && !m.isNaN) {
+    if (!m.isNaN) {
       //} geom.haveMeasure) {
       dest.setDouble(m);
     }
@@ -474,25 +474,25 @@ class BinaryWriter {
     EGeometryType geometryType = EGeometryType.forGeometry(geom);
     switch (geometryType) {
       case EGeometryType.POINT:
-        result += estimatePoint(geom.getCoordinate());
+        result += estimatePoint(geom.getCoordinate() ?? Coordinate.empty2D());
         break;
       case EGeometryType.LINESTRING:
-        result += estimateLineString(geom);
+        result += estimateLineString(geom as LineString);
         break;
       case EGeometryType.POLYGON:
-        result += estimatePolygon(geom);
+        result += estimatePolygon(geom as Polygon);
         break;
       case EGeometryType.MULTIPOINT:
-        result += estimateMultiPoint(geom);
+        result += estimateMultiPoint(geom as MultiPoint);
         break;
       case EGeometryType.MULTILINESTRING:
-        result += estimateMultiLineString(geom);
+        result += estimateMultiLineString(geom as MultiLineString);
         break;
       case EGeometryType.MULTIPOLYGON:
-        result += estimateMultiPolygon(geom);
+        result += estimateMultiPolygon(geom as MultiPolygon);
         break;
       case EGeometryType.GEOMETRYCOLLECTION:
-        result += estimateCollection(geom);
+        result += estimateCollection(geom as GeometryCollection);
         break;
       default:
         throw ArgumentError("Unknown Geometry Type: $geometryType");

@@ -3,14 +3,14 @@ part of dart_postgis;
 /// Class representing a geometry_columns record.
 class GeometryColumn {
   // VARIABLES
-  SqlName tableName;
-  String geometryColumnName;
+  late SqlName tableName;
+  late String geometryColumnName;
 
   /// The type, as compatible with {@link EGeometryType#fromGeometryTypeCode(int)} and {@link ESpatialiteGeometryType#forValue(int)}.
-  EGeometryType geometryType;
-  int coordinatesDimension;
-  int srid;
-  int isSpatialIndexEnabled;
+  late EGeometryType geometryType;
+  late int coordinatesDimension;
+  late int srid;
+  late int isSpatialIndexEnabled;
 }
 
 class PostgisGeometryColumns {
@@ -66,12 +66,12 @@ class PostgisUtils {
 ///
 /// <p>If performance is needed, this should not be used.</p>
 class PGQueryResult {
-  String geomName;
+  String? geomName;
 
   /// This can optionally be used to identify record sources
   /// in case of mixed data sources (ex. merging together
   /// QueryResults from different queries.
-  List<String> ids;
+  List<String>? ids;
 
   List<Geometry> geoms = [];
 

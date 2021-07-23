@@ -23,9 +23,7 @@ abstract class ByteGetter {
 class BinaryByteGetter extends ByteGetter {
   List<int> array;
 
-  BinaryByteGetter(List<int> array) {
-    this.array = array;
-  }
+  BinaryByteGetter(this.array);
 
   @override
   int get(int index) {
@@ -343,9 +341,11 @@ class BinaryParser {
   }
 
   /// Parse an Array of "full" Geometries */
-  void parseGeometryArray(ValueGetter data, List<Geometry> container) {
-    for (int i = 0; i < container.length; i++) {
-      container[i] = parseGeometry(data);
+  void parseGeometryArrayWithGetInt(
+      ValueGetter data, List<Geometry> container) {
+    var count = data.getInt();
+    for (int i = 0; i < count; i++) {
+      container.add(parseGeometry(data));
     }
   }
 
@@ -356,16 +356,16 @@ class BinaryParser {
   /// @param haveM
   List<Coordinate> parsePointArray(ValueGetter data, bool haveZ, bool haveM) {
     int count = data.getInt();
-    List<Coordinate> result = List(count);
+    List<Coordinate> result = [];
     for (int i = 0; i < count; i++) {
-      result[i] = parsePoint(data, haveZ, haveM);
+      result.add(parsePoint(data, haveZ, haveM));
     }
     return result;
   }
 
   MultiPoint parseMultiPoint(ValueGetter data) {
-    List<Point> points = List(data.getInt());
-    parseGeometryArray(data, points);
+    List<Point> points = [];
+    parseGeometryArrayWithGetInt(data, points);
     return gf.createMultiPoint(points);
   }
 
@@ -381,31 +381,28 @@ class BinaryParser {
 
   Polygon parsePolygon(ValueGetter data, bool haveZ, bool haveM) {
     int count = data.getInt();
-    List<LinearRing> rings = List(count);
+    List<LinearRing> rings = [];
     for (int i = 0; i < count; i++) {
-      rings[i] = parseLinearRing(data, haveZ, haveM);
+      rings.add(parseLinearRing(data, haveZ, haveM));
     }
     return gf.createPolygon(rings[0], rings.sublist(1));
   }
 
   MultiLineString parseMultiLineString(ValueGetter data) {
-    int count = data.getInt();
-    List<LineString> strings = List(count);
-    parseGeometryArray(data, strings);
+    List<LineString> strings = [];
+    parseGeometryArrayWithGetInt(data, strings);
     return gf.createMultiLineString(strings);
   }
 
   MultiPolygon parseMultiPolygon(ValueGetter data) {
-    int count = data.getInt();
-    List<Polygon> polys = List(count);
-    parseGeometryArray(data, polys);
+    List<Polygon> polys = [];
+    parseGeometryArrayWithGetInt(data, polys);
     return gf.createMultiPolygon(polys);
   }
 
   GeometryCollection parseCollection(ValueGetter data) {
-    int count = data.getInt();
-    List<Geometry> geoms = List(count);
-    parseGeometryArray(data, geoms);
+    List<Geometry> geoms = [];
+    parseGeometryArrayWithGetInt(data, geoms);
     return gf.createGeometryCollection(geoms);
   }
 }

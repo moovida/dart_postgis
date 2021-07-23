@@ -6,17 +6,17 @@ part of dart_postgis;
 class PostgisDb {
   static const String HM_STYLES_TABLE = "hm_styles";
 
-  PostgresqlDb _postgresDb;
+  late PostgresqlDb _postgresDb;
 
   final String _host;
   final String _dbName;
-  String user;
-  String pwd;
+  String? user;
+  String? pwd;
   int port;
 
-  String jdbcUrl;
+  late String jdbcUrl;
 
-  String pgVersion;
+  String pgVersion = "";
 
   PostgisDb(
     this._host,
@@ -41,7 +41,7 @@ class PostgisDb {
   @override
   int get hashCode => HashUtilities.hashObjects([jdbcUrl, user, pwd]);
 
-  Future<bool> open({Function populateFunction}) async {
+  Future<bool> open({Function? populateFunction}) async {
     bool opened = await _postgresDb.open(populateFunction: populateFunction);
     if (!opened) {
       return false;
@@ -57,22 +57,22 @@ class PostgisDb {
   }
 
   bool isOpen() {
-    return _postgresDb != null && _postgresDb.isOpen();
+    return _postgresDb.isOpen();
   }
 
   String get version => pgVersion;
 
   Future<void> close() async {
-    await _postgresDb?.close();
+    await _postgresDb.close();
   }
 
-  Future<GeometryColumn> getGeometryColumnsForTable(SqlName tableName) async {
+  Future<GeometryColumn?> getGeometryColumnsForTable(SqlName tableName) async {
     String indexSql =
         "SELECT tablename FROM pg_indexes WHERE upper(tablename) = upper(?) and upper(indexdef) like '%USING GIST%'";
     List<String> tablesWithIndex = [];
-    QueryResult queryResult =
+    QueryResult? queryResult =
         await _postgresDb.select(indexSql, [tableName.name]);
-    if (queryResult.length == 1) {
+    if (queryResult != null && queryResult.length == 1) {
       tablesWithIndex.add(queryResult.first.get("tablename"));
     }
     String sql = "select " +
@@ -97,8 +97,8 @@ class PostgisDb {
         ")=Lower(?)";
 
     queryResult = await _postgresDb.select(sql, [tableName.name]);
-    GeometryColumn gc;
-    if (queryResult.length == 1) {
+    GeometryColumn? gc;
+    if (queryResult != null && queryResult.length == 1) {
       gc = GeometryColumn();
       var row = queryResult.first;
       String name = row.getAt(0);
@@ -157,9 +157,12 @@ class PostgisDb {
     throw RuntimeException("Not implemented yet...");
   }
 
-  Future<String> getSpatialindexGeometryWherePiece(
+  Future<String?> getSpatialindexGeometryWherePiece(
       SqlName tableName, Geometry geometry) async {
-    GeometryColumn gCol = await getGeometryColumnsForTable(tableName);
+    GeometryColumn? gCol = await getGeometryColumnsForTable(tableName);
+    if (gCol == null) {
+      return null;
+    }
 
     int srid = geometry.getSRID();
     Envelope envelopeInternal = geometry.getEnvelopeInternal();
@@ -175,10 +178,13 @@ class PostgisDb {
     return sql;
   }
 
-  Future<String> getSpatialindexBBoxWherePiece(
+  Future<String?> getSpatialindexBBoxWherePiece(
       SqlName tableName, double x1, double y1, double x2, double y2) async {
     Polygon bounds = PostgisUtils.createPolygonFromBounds(x1, y1, x2, y2);
-    GeometryColumn gCol = await getGeometryColumnsForTable(tableName);
+    GeometryColumn? gCol = await getGeometryColumnsForTable(tableName);
+    if (gCol == null) {
+      return null;
+    }
     int srid = gCol.srid;
 
     String sql = gCol.geometryColumnName +
@@ -207,28 +213,31 @@ class PostgisDb {
   /// @return The list of geometries intersecting the envelope.
   /// @throws Exception
   Future<List<Geometry>> getGeometriesIn(SqlName tableName,
-      {Envelope envelope,
-      Geometry intersectionGeometry,
-      List<String> prePostWhere,
+      {Envelope? envelope,
+      Geometry? intersectionGeometry,
+      List<String?>? prePostWhere,
       int limit = -1,
-      String userDataField}) async {
+      String? userDataField}) async {
     List<String> wheres = [];
     String pre = "";
     String post = "";
     String where = "";
     if (prePostWhere != null && prePostWhere.length == 3) {
-      if (prePostWhere[0] != null) pre = prePostWhere[0];
-      if (prePostWhere[1] != null) post = prePostWhere[1];
+      if (prePostWhere[0] != null) pre = prePostWhere[0]!;
+      if (prePostWhere[1] != null) post = prePostWhere[1]!;
       if (prePostWhere[2] != null) {
-        where = prePostWhere[2];
+        where = prePostWhere[2]!;
         wheres.add(where);
       }
     }
 
     String userDataSql = userDataField != null ? ", $userDataField " : "";
 
-    String pk = await _postgresDb.getPrimaryKey(tableName);
-    GeometryColumn gCol = await getGeometryColumnsForTable(tableName);
+    String? pk = await _postgresDb.getPrimaryKey(tableName);
+    GeometryColumn? gCol = await getGeometryColumnsForTable(tableName);
+    if (gCol == null) {
+      return [];
+    }
     String sql = "SELECT " +
         pre +
         gCol.geometryColumnName +
@@ -238,7 +247,7 @@ class PostgisDb {
 
     if (intersectionGeometry != null) {
       intersectionGeometry.setSRID(gCol.srid);
-      String spatialindexGeometryWherePiece =
+      String? spatialindexGeometryWherePiece =
           await getSpatialindexGeometryWherePiece(
               tableName, intersectionGeometry);
       if (spatialindexGeometryWherePiece != null) {
@@ -249,7 +258,7 @@ class PostgisDb {
       double y1 = envelope.getMinY();
       double x2 = envelope.getMaxX();
       double y2 = envelope.getMaxY();
-      String spatialindexBBoxWherePiece =
+      String? spatialindexBBoxWherePiece =
           await getSpatialindexBBoxWherePiece(tableName, x1, y1, x2, y2);
       if (spatialindexBBoxWherePiece != null) {
         wheres.add(spatialindexBBoxWherePiece);
@@ -266,19 +275,21 @@ class PostgisDb {
 
     List<Geometry> geoms = [];
     var res = await _postgresDb.select(sql);
-    res.forEach((QueryResultRow map) {
-      var geomBytes = map.getAt(0);
-      if (geomBytes != null) {
-        Geometry geom = BinaryParser().parse(geomBytes);
-        var pkValue = map.getAt(1);
-        if (userDataField != null) {
-          geom.setUserData(map.getAt(2));
-        } else {
-          geom.setUserData(pkValue);
+    if (res != null) {
+      res.forEach((QueryResultRow map) {
+        var geomBytes = map.getAt(0);
+        if (geomBytes != null) {
+          Geometry geom = BinaryParser().parse(geomBytes);
+          var pkValue = map.getAt(1);
+          if (userDataField != null) {
+            geom.setUserData(map.getAt(2));
+          } else {
+            geom.setUserData(pkValue);
+          }
+          geoms.add(geom);
         }
-        geoms.add(geom);
-      }
-    });
+      });
+    }
     return geoms;
   }
 
@@ -300,16 +311,22 @@ class PostgisDb {
     await createSpatialIndex(tableName, geomColName);
   }
 
-  Future<String> getPrimaryKey(SqlName tableName) async {
+  Future<String?> getPrimaryKey(SqlName tableName) async {
     return await _postgresDb.getPrimaryKey(tableName);
   }
 
   Future<PGQueryResult> getTableData(SqlName tableName,
-      {Envelope envelope, Geometry geometry, String where, int limit}) async {
+      {Envelope? envelope,
+      Geometry? geometry,
+      String? where,
+      int? limit}) async {
     PGQueryResult queryResult = PGQueryResult();
 
-    GeometryColumn geometryColumn = await getGeometryColumnsForTable(tableName);
-    queryResult.geomName = geometryColumn.geometryColumnName;
+    GeometryColumn? geometryColumn =
+        await getGeometryColumnsForTable(tableName);
+    if (geometryColumn != null) {
+      queryResult.geomName = geometryColumn.geometryColumnName;
+    }
 
     String sql = "select * from " + tableName.fixedName;
 
@@ -319,7 +336,7 @@ class PostgisDb {
 
     List<String> wheresList = [];
     if (geometry != null) {
-      String spatialindexGeometryWherePiece =
+      String? spatialindexGeometryWherePiece =
           await getSpatialindexGeometryWherePiece(tableName, geometry);
       if (spatialindexGeometryWherePiece != null) {
         wheresList.add(spatialindexGeometryWherePiece);
@@ -329,7 +346,7 @@ class PostgisDb {
       double y1 = envelope.getMinY();
       double x2 = envelope.getMaxX();
       double y2 = envelope.getMaxY();
-      String spatialindexBBoxWherePiece =
+      String? spatialindexBBoxWherePiece =
           await getSpatialindexBBoxWherePiece(tableName, x1, y1, x2, y2);
       if (spatialindexBBoxWherePiece != null) {
         wheresList.add(spatialindexBBoxWherePiece);
@@ -348,21 +365,22 @@ class PostgisDb {
       sql += " limit $limit";
     }
     var result = await _postgresDb.select(sql);
-    result.forEach((QueryResultRow map) {
-      Map<String, dynamic> newMap = {};
-      var geomBytes = map.get(queryResult.geomName);
-      if (geomBytes != null) {
-        Geometry geom = BinaryParser().parse(geomBytes);
-        queryResult.geoms.add(geom);
-      }
-      map
-        ..forEach((k, v) {
+    if (result != null && queryResult.geomName != null) {
+      result.forEach((QueryResultRow map) {
+        Map<String, dynamic> newMap = {};
+        var geomBytes = map.get(queryResult.geomName!);
+        if (geomBytes != null) {
+          Geometry geom = BinaryParser().parse(geomBytes);
+          queryResult.geoms.add(geom);
+        }
+        map.forEach((k, v) {
           if (k != queryResult.geomName) {
             newMap[k] = v;
           }
         });
-      queryResult.data.add(newMap);
-    });
+        queryResult.data.add(newMap);
+      });
+    }
 
     return queryResult;
   }
@@ -390,8 +408,8 @@ class PostgisDb {
   ///
   /// This returns the number of affected rows. Only if [getLastInsertId]
   /// is set to true, the id of the last inserted row is returned.
-  Future<int> execute(String sql,
-      {List<dynamic> arguments, bool getLastInsertId = false}) async {
+  Future<int?> execute(String sql,
+      {List<dynamic>? arguments, bool getLastInsertId = false}) async {
     return await _postgresDb.execute(sql,
         arguments: arguments, getLastInsertId: getLastInsertId);
   }
@@ -399,12 +417,12 @@ class PostgisDb {
   /// Update a new record using a map and a where condition.
   ///
   /// This returns the number of rows affected.
-  Future<int> updateMap(
+  Future<int?> updateMap(
       SqlName table, Map<String, dynamic> values, String where) async {
     return await _postgresDb.updateMap(table, values, where);
   }
 
-  Future<QueryResult> select(String sql) async {
+  Future<QueryResult?> select(String sql) async {
     return await _postgresDb.select(sql);
   }
 
@@ -413,7 +431,7 @@ class PostgisDb {
   }
 
   /// Get the SLD xml for a given table.
-  Future<String> getSld(SqlName tableName) async {
+  Future<String?> getSld(SqlName tableName) async {
     await checkStyleTable();
     String name = tableName.name.toLowerCase();
     String sql = "select sld from " +
@@ -422,7 +440,7 @@ class PostgisDb {
         name +
         "'";
     var res = await _postgresDb.select(sql);
-    if (res.length == 1) {
+    if (res != null && res.length == 1) {
       var row = res.first;
       String sldString = row.get('sld');
       return sldString;
