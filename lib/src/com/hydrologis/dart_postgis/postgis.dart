@@ -41,8 +41,24 @@ class PostgisDb {
   @override
   int get hashCode => HashUtilities.hashObjects([jdbcUrl, user, pwd]);
 
-  Future<bool> open({Function? populateFunction}) async {
-    bool opened = await _postgresDb.open(populateFunction: populateFunction);
+  Future<bool> open({
+    Function? populateFunction,
+    int timeoutInSeconds = 30,
+    int queryTimeoutInSeconds = 30,
+    String timeZone = 'UTC',
+    bool useSSL = false,
+    bool isUnixSocket = false,
+    bool allowClearTextPassword = false,
+  }) async {
+    bool opened = await _postgresDb.open(
+      populateFunction: populateFunction,
+      timeoutInSeconds: timeoutInSeconds,
+      queryTimeoutInSeconds: queryTimeoutInSeconds,
+      timeZone: timeZone,
+      useSSL: useSSL,
+      isUnixSocket: isUnixSocket,
+      allowClearTextPassword: allowClearTextPassword,
+    );
     if (!opened) {
       return false;
     }
