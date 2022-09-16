@@ -1,3 +1,7 @@
+## 0.3.0
+
+- update to support schemas
+
 ## 0.2.1
 
 - postgres libs upgrade
