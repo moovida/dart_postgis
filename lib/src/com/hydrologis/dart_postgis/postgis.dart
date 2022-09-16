@@ -449,42 +449,43 @@ class PostgisDb {
 
   /// Get the SLD xml for a given table.
   Future<String?> getSld(TableName tableName) async {
-    await checkStyleTable();
-    String name = tableName.name.toLowerCase();
-    String sql = "select sld from " +
-        HM_STYLES_TABLE +
-        " where lower(tablename)='" +
-        name +
-        "'";
-    var res = await _postgresDb.select(sql);
-    if (res != null && res.length == 1) {
-      var row = res.first;
-      String sldString = row.get('sld');
-      return sldString;
+    if (await checkStyleTable()) {
+      String name = tableName.name.toLowerCase();
+      String sql = "select sld from " +
+          HM_STYLES_TABLE +
+          " where lower(tablename)='" +
+          name +
+          "'";
+      var res = await _postgresDb.select(sql);
+      if (res != null && res.length == 1) {
+        var row = res.first;
+        String sldString = row.get('sld');
+        return sldString;
+      }
     }
     return null;
   }
 
   /// Update the sld string in the geopackage
   Future<void> updateSld(TableName tableName, String sldString) async {
-    await checkStyleTable();
-
-    String name = tableName.name.toLowerCase();
-    String sql = """update $HM_STYLES_TABLE 
+    if (await checkStyleTable()) {
+      String name = tableName.name.toLowerCase();
+      String sql = """update $HM_STYLES_TABLE 
         set sld=? where lower(tablename)='$name'
         """;
-    var updated = await _postgresDb.execute(sql, arguments: [sldString]);
-    if (updated == 0) {
-      // need to insert
-      String sql = """insert into $HM_STYLES_TABLE 
+      var updated = await _postgresDb.execute(sql, arguments: [sldString]);
+      if (updated == 0) {
+        // need to insert
+        String sql = """insert into $HM_STYLES_TABLE 
       (tablename, sld) values
         ('$name', ?);
         """;
-      await _postgresDb.execute(sql, arguments: [sldString]);
+        await _postgresDb.execute(sql, arguments: [sldString]);
+      }
     }
   }
 
-  Future<void> checkStyleTable() async {
+  Future<bool> checkStyleTable() async {
     if (!await _postgresDb.hasTable(TableName(HM_STYLES_TABLE))) {
       var createTablesQuery = '''
       CREATE TABLE $HM_STYLES_TABLE (  
@@ -498,10 +499,15 @@ class PostgisDb {
       for (int i = 0; i < split.length; i++) {
         var sql = split[i].trim();
         if (sql.isNotEmpty) {
-          await _postgresDb.execute(sql);
+          try {
+            await _postgresDb.execute(sql);
+          } catch (e) {
+            return false;
+          }
         }
       }
     }
+    return true;
   }
 
   dynamic geometryToSql(Geometry geom) {
