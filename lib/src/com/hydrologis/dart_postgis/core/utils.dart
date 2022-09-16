@@ -3,7 +3,7 @@ part of dart_postgis;
 /// Class representing a geometry_columns record.
 class GeometryColumn {
   // VARIABLES
-  late SqlName tableName;
+  late TableName tableName;
   late String geometryColumnName;
 
   /// The type, as compatible with {@link EGeometryType#fromGeometryTypeCode(int)} and {@link ESpatialiteGeometryType#forValue(int)}.

@@ -146,15 +146,15 @@ void main() {
 }
 
 Future checkInsertSelect(WKTReader wktReader, String geomTxt,
-    TableName sqlName2, PostgisDb db, String name) async {
+    TableName tableName2, PostgisDb db, String name) async {
   var geom = wktReader.read(geomTxt)!;
   geom.setSRID(4326);
   var geomBytes = BinaryWriter().writeHexed(geom);
   // print(geomBytes);
-  var sql = "insert into ${sqlName2.fixedDoubleName} values (?, ?)";
+  var sql = "insert into ${tableName2.fixedDoubleName} values (?, ?)";
   await db.execute(sql, arguments: [name, geomBytes]);
   PGQueryResult result =
-      await db.getTableData(sqlName2, where: "name = '$name'");
+      await db.getTableData(tableName2, where: "name = '$name'");
   expect(result.data.length, 1);
   expect(result.geoms[0].toText(), geomTxt);
 }

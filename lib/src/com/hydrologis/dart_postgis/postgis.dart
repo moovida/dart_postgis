@@ -119,7 +119,7 @@ class PostgisDb {
       gc = GeometryColumn();
       var row = queryResult.first;
       String name = row.getAt(0);
-      gc.tableName = SqlName(name);
+      gc.tableName = TableName(name);
       gc.geometryColumnName = row.getAt(1);
       String type = row.getAt(2);
       gc.geometryType = EGeometryType.forWktName(type);
@@ -134,7 +134,7 @@ class PostgisDb {
   }
 
   // void createSpatialTable(
-  //     SqlName tableName,
+  //     TableName tableName,
   //     int tableSrid,
   //     String geometryFieldData,
   //     List<String> fieldData,
@@ -466,7 +466,7 @@ class PostgisDb {
   }
 
   /// Update the sld string in the geopackage
-  Future<void> updateSld(SqlName tableName, String sldString) async {
+  Future<void> updateSld(TableName tableName, String sldString) async {
     await checkStyleTable();
 
     String name = tableName.name.toLowerCase();
