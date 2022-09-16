@@ -4,8 +4,27 @@ import 'package:dart_postgis/dart_postgis.dart';
 import 'package:test/test.dart';
 
 void main() {
-  var sqlName = SqlName("test");
-  var sqlName2 = SqlName("test2");
+  var tableName = TableName("myschema.test");
+  var tableName2 = TableName("test2");
+
+  var INIT_SQL = [
+    """drop table if exists ${tableName.fixedDoubleName} cascade;""",
+    """CREATE SCHEMA IF NOT EXISTS ${tableName.getSchema()};""",
+    """CREATE TABLE ${tableName.fixedDoubleName} (name varchar, geom geometry(geometry, 4326));""",
+    """CREATE INDEX ${tableName.name}__geom_spx ON ${tableName.fixedDoubleName} USING GIST (geom);"""
+        """
+    INSERT INTO ${tableName.fixedDoubleName} VALUES
+        ('Point', ST_GeomFromText('POINT(0 0)', 4326)),
+        ('Point2', ST_GeomFromText('POINT(-2 2)', 4326)),
+        ('MultiPoint', ST_GeomFromText('MULTIPOINT(2 1,1 2)', 4326)),
+        ('Linestring', ST_GeomFromText('LINESTRING(0 0, 1 1, 2 1, 2 2)', 4326)),
+        ('MultiLinestring', ST_GeomFromText('MULTILINESTRING((1 0,0 1,3 2),(3 2,5 4))', 4326)),
+        ('Polygon', ST_GeomFromText('POLYGON((0 0,4 0,4 4,0 4,0 0),(1 1, 2 1, 2 2, 1 2,1 1))', 4326)),
+        ('PolygonWithHole', ST_GeomFromText('POLYGON((0 0, 10 0, 10 10, 0 10, 0 0),(1 1, 1 2, 2 2, 2 1, 1 1))', 4326)),
+        ('MultiPolygon', ST_GeomFromText('MULTIPOLYGON(((1 1,3 1,3 3,1 3,1 1),(1 1,2 1,2 2,1 2,1 1)), ((-1 -1,-1 -2,-2 -2,-2 -1,-1 -1)))', 4326)),
+        ('Collection', ST_GeomFromText('GEOMETRYCOLLECTION(POLYGON((1 1, 2 1, 2 2, 1 2,1 1)),POINT(2 3),LINESTRING(2 3,3 4))', 4326));
+  """
+  ];
 
   group('Test connection', () {
     late PostgisDb db;
@@ -27,13 +46,13 @@ void main() {
     });
 
     test('Check utils', () async {
-      bool hasTable = await db.hasTable(sqlName);
+      bool hasTable = await db.hasTable(tableName);
       expect(hasTable, isTrue);
 
-      var columns = await db.getTableColumns(sqlName);
+      var columns = await db.getTableColumns(tableName);
       expect(columns.length, 2);
 
-      var geometryColumn = await db.getGeometryColumnsForTable(sqlName);
+      var geometryColumn = await db.getGeometryColumnsForTable(tableName);
       expect(geometryColumn!.srid, 4326);
       expect(geometryColumn.coordinatesDimension, 2);
       expect(geometryColumn.geometryColumnName, "geom");
@@ -42,7 +61,7 @@ void main() {
 
     test('Test geometry reading', () async {
       PGQueryResult result =
-          await db.getTableData(sqlName, where: "name like 'Point%'");
+          await db.getTableData(tableName, where: "name like 'Point%'");
       expect(result.data.length, 2);
       expect(result.geomName, "geom");
       for (var i = 0; i < 2; i++) {
@@ -56,21 +75,21 @@ void main() {
       }
 
       result =
-          await db.getTableData(sqlName, where: "name = 'PolygonWithHole'");
+          await db.getTableData(tableName, where: "name = 'PolygonWithHole'");
       expect(result.data.length, 1);
       expect(result.geomName, "geom");
       expect(result.geoms[0].toText(),
           "POLYGON ((0 0, 10 0, 10 10, 0 10, 0 0), (1 1, 1 2, 2 2, 2 1, 1 1))");
       expect(result.data[0]["name"], "PolygonWithHole");
 
-      result = await db.getTableData(sqlName, where: "name = 'MultiPolygon'");
+      result = await db.getTableData(tableName, where: "name = 'MultiPolygon'");
       expect(result.data.length, 1);
       expect(result.geomName, "geom");
       expect(result.geoms[0].toText(),
           "MULTIPOLYGON (((1 1, 3 1, 3 3, 1 3, 1 1), (1 1, 2 1, 2 2, 1 2, 1 1)), ((-1 -1, -1 -2, -2 -2, -2 -1, -1 -1)))");
       expect(result.data[0]["name"], "MultiPolygon");
 
-      result = await db.getTableData(sqlName, where: "name = 'Collection'");
+      result = await db.getTableData(tableName, where: "name = 'Collection'");
       expect(result.data.length, 1);
       expect(result.geomName, "geom");
       expect(result.geoms[0].toText(),
@@ -79,7 +98,7 @@ void main() {
     });
 
     test('Spatial query test', () async {
-      List<Geometry> result = await db.getGeometriesIn(sqlName,
+      List<Geometry> result = await db.getGeometriesIn(tableName,
           envelope: Envelope(9, 11, 9, 11), userDataField: "name");
       expect(result.length, 1);
       expect(result[0].toText(),
@@ -87,72 +106,55 @@ void main() {
     });
     test('Test geometry writing', () async {
       await db.transaction((ctx) async {
-        await ctx.execute("drop table if exists ${sqlName2.name} cascade;");
         await ctx.execute(
-            "CREATE TABLE ${sqlName2.name} (name varchar, geom geometry(geometry, 4326));");
+            "drop table if exists ${tableName2.fixedDoubleName} cascade;");
+        await ctx.execute(
+            "CREATE TABLE ${tableName2.fixedDoubleName} (name varchar, geom geometry(geometry, 4326));");
       });
 
       var wktReader = WKTReader();
       var geomTxt = "POINT (-2 2)";
       var name = 'Point2';
-      await checkInsertSelect(wktReader, geomTxt, sqlName2, db, name);
+      await checkInsertSelect(wktReader, geomTxt, tableName2, db, name);
       geomTxt = "MULTIPOINT ((2 1), (1 2))";
       name = 'MultiPoint';
-      await checkInsertSelect(wktReader, geomTxt, sqlName2, db, name);
+      await checkInsertSelect(wktReader, geomTxt, tableName2, db, name);
       geomTxt = "LINESTRING (0 0, 1 1, 2 1, 2 2)";
       name = 'LineString';
-      await checkInsertSelect(wktReader, geomTxt, sqlName2, db, name);
+      await checkInsertSelect(wktReader, geomTxt, tableName2, db, name);
       geomTxt = "MULTILINESTRING ((1 0, 0 1, 3 2), (3 2, 5 4))";
       name = 'MultiLineString';
-      await checkInsertSelect(wktReader, geomTxt, sqlName2, db, name);
+      await checkInsertSelect(wktReader, geomTxt, tableName2, db, name);
       geomTxt =
           "POLYGON ((0 0, 4 0, 4 4, 0 4, 0 0), (1 1, 2 1, 2 2, 1 2, 1 1))";
       name = 'Polygon';
-      await checkInsertSelect(wktReader, geomTxt, sqlName2, db, name);
+      await checkInsertSelect(wktReader, geomTxt, tableName2, db, name);
       geomTxt =
           "MULTIPOLYGON (((1 1, 3 1, 3 3, 1 3, 1 1), (1 1, 2 1, 2 2, 1 2, 1 1)), ((-1 -1, -1 -2, -2 -2, -2 -1, -1 -1)))";
       name = 'MultiPolygon';
-      await checkInsertSelect(wktReader, geomTxt, sqlName2, db, name);
+      await checkInsertSelect(wktReader, geomTxt, tableName2, db, name);
       geomTxt =
           "POLYGON ((0 0, 10 0, 10 10, 0 10, 0 0), (1 1, 1 2, 2 2, 2 1, 1 1))";
       name = 'PolygonWithHole';
-      await checkInsertSelect(wktReader, geomTxt, sqlName2, db, name);
+      await checkInsertSelect(wktReader, geomTxt, tableName2, db, name);
       geomTxt =
           "GEOMETRYCOLLECTION (POLYGON ((1 1, 2 1, 2 2, 1 2, 1 1)), POINT (2 3), LINESTRING (2 3, 3 4))";
       name = 'geometryCollection';
-      await checkInsertSelect(wktReader, geomTxt, sqlName2, db, name);
+      await checkInsertSelect(wktReader, geomTxt, tableName2, db, name);
     });
   });
 }
 
-Future checkInsertSelect(WKTReader wktReader, String geomTxt, SqlName sqlName2,
-    PostgisDb db, String name) async {
+Future checkInsertSelect(WKTReader wktReader, String geomTxt,
+    TableName sqlName2, PostgisDb db, String name) async {
   var geom = wktReader.read(geomTxt)!;
   geom.setSRID(4326);
   var geomBytes = BinaryWriter().writeHexed(geom);
   // print(geomBytes);
-  var sql = "insert into ${sqlName2.name} values (?, ?)";
+  var sql = "insert into ${sqlName2.fixedDoubleName} values (?, ?)";
   await db.execute(sql, arguments: [name, geomBytes]);
   PGQueryResult result =
       await db.getTableData(sqlName2, where: "name = '$name'");
   expect(result.data.length, 1);
   expect(result.geoms[0].toText(), geomTxt);
 }
-
-const INIT_SQL = [
-  """drop table if exists test cascade;""",
-  """CREATE TABLE test (name varchar, geom geometry(geometry, 4326));""",
-  """CREATE INDEX test__geom_spx ON test USING GIST (geom);"""
-      """
-    INSERT INTO test VALUES
-        ('Point', ST_GeomFromText('POINT(0 0)', 4326)),
-        ('Point2', ST_GeomFromText('POINT(-2 2)', 4326)),
-        ('MultiPoint', ST_GeomFromText('MULTIPOINT(2 1,1 2)', 4326)),
-        ('Linestring', ST_GeomFromText('LINESTRING(0 0, 1 1, 2 1, 2 2)', 4326)),
-        ('MultiLinestring', ST_GeomFromText('MULTILINESTRING((1 0,0 1,3 2),(3 2,5 4))', 4326)),
-        ('Polygon', ST_GeomFromText('POLYGON((0 0,4 0,4 4,0 4,0 0),(1 1, 2 1, 2 2, 1 2,1 1))', 4326)),
-        ('PolygonWithHole', ST_GeomFromText('POLYGON((0 0, 10 0, 10 10, 0 10, 0 0),(1 1, 1 2, 2 2, 2 1, 1 1))', 4326)),
-        ('MultiPolygon', ST_GeomFromText('MULTIPOLYGON(((1 1,3 1,3 3,1 3,1 1),(1 1,2 1,2 2,1 2,1 1)), ((-1 -1,-1 -2,-2 -2,-2 -1,-1 -1)))', 4326)),
-        ('Collection', ST_GeomFromText('GEOMETRYCOLLECTION(POLYGON((1 1, 2 1, 2 2, 1 2,1 1)),POINT(2 3),LINESTRING(2 3,3 4))', 4326));
-  """
-];

@@ -82,7 +82,8 @@ class PostgisDb {
     await _postgresDb.close();
   }
 
-  Future<GeometryColumn?> getGeometryColumnsForTable(SqlName tableName) async {
+  Future<GeometryColumn?> getGeometryColumnsForTable(
+      TableName tableName) async {
     String indexSql =
         "SELECT tablename FROM pg_indexes WHERE upper(tablename) = upper(?) and upper(indexdef) like '%USING GIST%'";
     List<String> tablesWithIndex = [];
@@ -168,13 +169,13 @@ class PostgisDb {
   //   }
   // }
 
-  Envelope getTableBounds(SqlName tableName) {
+  Envelope getTableBounds(TableName tableName) {
 // TODO
     throw RuntimeException("Not implemented yet...");
   }
 
   Future<String?> getSpatialindexGeometryWherePiece(
-      SqlName tableName, Geometry geometry) async {
+      TableName tableName, Geometry geometry) async {
     GeometryColumn? gCol = await getGeometryColumnsForTable(tableName);
     if (gCol == null) {
       return null;
@@ -195,7 +196,7 @@ class PostgisDb {
   }
 
   Future<String?> getSpatialindexBBoxWherePiece(
-      SqlName tableName, double x1, double y1, double x2, double y2) async {
+      TableName tableName, double x1, double y1, double x2, double y2) async {
     Polygon bounds = PostgisUtils.createPolygonFromBounds(x1, y1, x2, y2);
     GeometryColumn? gCol = await getGeometryColumnsForTable(tableName);
     if (gCol == null) {
@@ -228,7 +229,7 @@ class PostgisDb {
   /// @param limit an optional limit to apply.
   /// @return The list of geometries intersecting the envelope.
   /// @throws Exception
-  Future<List<Geometry>> getGeometriesIn(SqlName tableName,
+  Future<List<Geometry>> getGeometriesIn(TableName tableName,
       {Envelope? envelope,
       Geometry? intersectionGeometry,
       List<String?>? prePostWhere,
@@ -309,29 +310,29 @@ class PostgisDb {
     return geoms;
   }
 
-  Future<List<SqlName>> getTables(bool doOrder) async {
+  Future<List<TableName>> getTables(bool doOrder) async {
     return await _postgresDb.getTables(doOrder: doOrder);
   }
 
-  Future<bool> hasTable(SqlName tableName) async {
+  Future<bool> hasTable(TableName tableName) async {
     return await _postgresDb.hasTable(tableName);
   }
 
   /// Get the [tableName] columns as array of name, type, isPrimaryKey, notnull.
-  Future<List<List>> getTableColumns(SqlName tableName) async {
+  Future<List<List>> getTableColumns(TableName tableName) async {
     return await _postgresDb.getTableColumns(tableName);
   }
 
-  Future<void> addGeometryXYColumnAndIndex(SqlName tableName,
+  Future<void> addGeometryXYColumnAndIndex(TableName tableName,
       String geomColName, String geomType, String epsg) async {
     await createSpatialIndex(tableName, geomColName);
   }
 
-  Future<String?> getPrimaryKey(SqlName tableName) async {
+  Future<String?> getPrimaryKey(TableName tableName) async {
     return await _postgresDb.getPrimaryKey(tableName);
   }
 
-  Future<PGQueryResult> getTableData(SqlName tableName,
+  Future<PGQueryResult> getTableData(TableName tableName,
       {Envelope? envelope,
       Geometry? geometry,
       String? where,
@@ -405,7 +406,7 @@ class PostgisDb {
   ///
   /// @param e feature entry to create spatial index for
   Future<void> createSpatialIndex(
-      SqlName tableName, String geometryName) async {
+      TableName tableName, String geometryName) async {
     String sql = "CREATE INDEX " +
         tableName.name +
         "__" +
@@ -434,7 +435,7 @@ class PostgisDb {
   ///
   /// This returns the number of rows affected.
   Future<int?> updateMap(
-      SqlName table, Map<String, dynamic> values, String where) async {
+      TableName table, Map<String, dynamic> values, String where) async {
     return await _postgresDb.updateMap(table, values, where);
   }
 
@@ -447,7 +448,7 @@ class PostgisDb {
   }
 
   /// Get the SLD xml for a given table.
-  Future<String?> getSld(SqlName tableName) async {
+  Future<String?> getSld(TableName tableName) async {
     await checkStyleTable();
     String name = tableName.name.toLowerCase();
     String sql = "select sld from " +
@@ -484,7 +485,7 @@ class PostgisDb {
   }
 
   Future<void> checkStyleTable() async {
-    if (!await _postgresDb.hasTable(SqlName(HM_STYLES_TABLE))) {
+    if (!await _postgresDb.hasTable(TableName(HM_STYLES_TABLE))) {
       var createTablesQuery = '''
       CREATE TABLE $HM_STYLES_TABLE (  
         tablename TEXT NOT NULL,

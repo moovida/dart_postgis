@@ -91,7 +91,7 @@ packages:
       name: dart_hydrologis_db
       url: "https://pub.dartlang.org"
     source: hosted
-    version: "0.7.4"
+    version: "1.0.0"
   dart_hydrologis_utils:
     dependency: "direct main"
     description:
