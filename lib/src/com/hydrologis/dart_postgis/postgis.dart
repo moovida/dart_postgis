@@ -82,6 +82,23 @@ class PostgisDb {
     await _postgresDb.close();
   }
 
+  /// Get the names of the geometry tables.
+  ///
+  /// This is the fast was, as [getGeometryColumnsForTable] also checks
+  /// for the spatial index availability and might be slow for many tables.
+  Future<List<String>> getGeometryTables() async {
+    List<String> geomTables = [];
+    QueryResult? queryResult = await _postgresDb
+        .select("select f_table_schema,f_table_name from geometry_columns");
+    queryResult!.forEach((QueryResultRow row) {
+      var tableName = row.getAt(1);
+      var schemaName = row.getAt(0);
+      geomTables.add(schemaName + "." + tableName);
+    });
+    geomTables.sort();
+    return geomTables;
+  }
+
   Future<GeometryColumn?> getGeometryColumnsForTable(
       TableName tableName) async {
     String indexSql =

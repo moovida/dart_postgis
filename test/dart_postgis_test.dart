@@ -57,6 +57,12 @@ void main() {
       expect(geometryColumn.coordinatesDimension, 2);
       expect(geometryColumn.geometryColumnName, "geom");
       expect(geometryColumn.geometryType.typeName, "GEOMETRY");
+
+      List<String> tableNames = await db.getGeometryTables();
+      tableNames = tableNames
+          .where((element) => element.startsWith("myschema"))
+          .toList();
+      expect(tableNames.length, 1);
     });
 
     test('Test geometry reading', () async {
