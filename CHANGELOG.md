@@ -1,3 +1,10 @@
+## 0.3.1
+
+- fixes for missing style and schema handling
+- fixes for primary key handling
+- faster geom col name and srid getter
+- added handling of generic geometry column
+
 ## 0.3.0
 
 - update to support schemas
