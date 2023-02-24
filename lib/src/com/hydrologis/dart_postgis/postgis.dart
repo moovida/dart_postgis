@@ -13,6 +13,7 @@ class PostgisDb {
   String? user;
   String? pwd;
   int port;
+  bool? _canHanldeStyle;
 
   late String jdbcUrl;
 
@@ -143,11 +144,41 @@ class PostgisDb {
       gc.coordinatesDimension = row.getAt(3);
       gc.srid = row.getAt(4);
 
+      if (gc.geometryType == EGeometryType.GEOMETRY) {
+        List<Geometry> list = await getGeometriesIn(tableName, limit: 1);
+        if (list.isNotEmpty) {
+          Geometry g = list[0];
+          gc.geometryType = EGeometryType.forGeometry(g);
+        }
+      }
+
       if (tablesWithIndex.contains(name)) {
         gc.isSpatialIndexEnabled = 1;
       }
     }
     return gc;
+  }
+
+  Future<List<dynamic>?> getGeometryColumnNameAndSridForTable(
+      TableName tableName) async {
+    String sql = "select " +
+        PostgisGeometryColumns.F_GEOMETRY_COLUMN +
+        ", " //
+        +
+        PostgisGeometryColumns.SRID +
+        " from " //
+        +
+        PostgisGeometryColumns.TABLENAME +
+        " where Lower(" +
+        PostgisGeometryColumns.F_TABLE_NAME +
+        ")=Lower(?)";
+
+    var queryResult = await _postgresDb.select(sql, [tableName.name]);
+    if (queryResult != null && queryResult.length == 1) {
+      var row = queryResult.first;
+      return [row.getAt(0), row.getAt(1)];
+    }
+    return null;
   }
 
   // void createSpatialTable(
@@ -268,19 +299,19 @@ class PostgisDb {
     String userDataSql = userDataField != null ? ", $userDataField " : "";
 
     String? pk = await _postgresDb.getPrimaryKey(tableName);
-    GeometryColumn? gCol = await getGeometryColumnsForTable(tableName);
-    if (gCol == null) {
+    var gcAndSrid = await getGeometryColumnNameAndSridForTable(tableName);
+    if (gcAndSrid == null) {
       return [];
     }
     String sql = "SELECT " +
         pre +
-        gCol.geometryColumnName +
+        gcAndSrid[0] +
         post +
         " as the_geom, $pk $userDataSql FROM " +
         tableName.fixedName;
 
     if (intersectionGeometry != null) {
-      intersectionGeometry.setSRID(gCol.srid);
+      intersectionGeometry.setSRID(gcAndSrid[1]);
       String? spatialindexGeometryWherePiece =
           await getSpatialindexGeometryWherePiece(
               tableName, intersectionGeometry);
@@ -466,6 +497,9 @@ class PostgisDb {
 
   /// Get the SLD xml for a given table.
   Future<String?> getSld(TableName tableName) async {
+    if (_canHanldeStyle != null && _canHanldeStyle == false) {
+      return Future.value(null);
+    }
     if (await checkStyleTable()) {
       String name = tableName.name.toLowerCase();
       String sql = "select sld from " +
@@ -485,6 +519,9 @@ class PostgisDb {
 
   /// Update the sld string in the geopackage
   Future<void> updateSld(TableName tableName, String sldString) async {
+    if (_canHanldeStyle != null && _canHanldeStyle == false) {
+      return;
+    }
     if (await checkStyleTable()) {
       String name = tableName.name.toLowerCase();
       String sql = """update $HM_STYLES_TABLE 
@@ -500,6 +537,17 @@ class PostgisDb {
         await _postgresDb.execute(sql, arguments: [sldString]);
       }
     }
+  }
+
+  Future<bool> canHandleStyle() async {
+    if (_canHanldeStyle == null) {
+      try {
+        await checkStyleTable();
+      } catch (e) {
+        // ignore, needed only to get bool
+      }
+    }
+    return _canHanldeStyle!;
   }
 
   Future<bool> checkStyleTable() async {
@@ -518,11 +566,15 @@ class PostgisDb {
         if (sql.isNotEmpty) {
           try {
             await _postgresDb.execute(sql);
+            _canHanldeStyle = true;
           } catch (e) {
+            _canHanldeStyle = false;
             return false;
           }
         }
       }
+    } else {
+      _canHanldeStyle = true;
     }
     return true;
   }
