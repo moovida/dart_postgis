@@ -1,3 +1,7 @@
+## 0.3.1+1
+
+- small fix for geometry not seen when multiple available
+
 ## 0.3.1
 
 - fixes for missing style and schema handling

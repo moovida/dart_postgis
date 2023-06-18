@@ -107,7 +107,7 @@ class PostgisDb {
     List<String> tablesWithIndex = [];
     QueryResult? queryResult =
         await _postgresDb.select(indexSql, [tableName.name]);
-    if (queryResult != null && queryResult.length == 1) {
+    if (queryResult != null && queryResult.length > 0) {
       tablesWithIndex.add(queryResult.first.get("tablename"));
     }
     String sql = "select " +
@@ -133,7 +133,7 @@ class PostgisDb {
 
     queryResult = await _postgresDb.select(sql, [tableName.name]);
     GeometryColumn? gc;
-    if (queryResult != null && queryResult.length == 1) {
+    if (queryResult != null && queryResult.length > 0) {
       gc = GeometryColumn();
       var row = queryResult.first;
       String name = row.getAt(0);
