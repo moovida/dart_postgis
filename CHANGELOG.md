@@ -1,3 +1,7 @@
+## 0.3.2
+
+- Move geometrycolumn and features to utils lib to have common with geopackage.
+
 ## 0.3.1+1
 
 - small fix for geometry not seen when multiple available
