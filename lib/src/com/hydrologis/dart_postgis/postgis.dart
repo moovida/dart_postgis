@@ -137,7 +137,7 @@ class PostgisDb {
       gc = GeometryColumn();
       var row = queryResult.first;
       String name = row.getAt(0);
-      gc.tableName = TableName(name);
+      gc.tableName = name;
       gc.geometryColumnName = row.getAt(1);
       String type = row.getAt(2);
       gc.geometryType = EGeometryType.forWktName(type);
@@ -380,12 +380,12 @@ class PostgisDb {
     return await _postgresDb.getPrimaryKey(tableName);
   }
 
-  Future<PGQueryResult> getTableData(TableName tableName,
+  Future<FeatureCollection> getTableData(TableName tableName,
       {Envelope? envelope,
       Geometry? geometry,
       String? where,
       int? limit}) async {
-    PGQueryResult queryResult = PGQueryResult();
+    FeatureCollection queryResult = FeatureCollection();
 
     GeometryColumn? geometryColumn =
         await getGeometryColumnsForTable(tableName);
@@ -432,18 +432,20 @@ class PostgisDb {
     var result = await _postgresDb.select(sql);
     if (result != null && queryResult.geomName != null) {
       result.forEach((QueryResultRow map) {
-        Map<String, dynamic> newMap = {};
+        Feature feature = Feature();
+
         var geomBytes = map.get(queryResult.geomName!);
         if (geomBytes != null) {
           Geometry geom = BinaryParser().parse(geomBytes);
-          queryResult.geoms.add(geom);
+          feature.geometry = geom;
         }
         map.forEach((k, v) {
           if (k != queryResult.geomName) {
-            newMap[k] = v;
+            feature.attributes[k] = v;
           }
         });
-        queryResult.data.add(newMap);
+
+        queryResult.features.add(feature);
       });
     }
 

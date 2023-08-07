@@ -1,4 +1,5 @@
 import 'package:dart_hydrologis_db/dart_hydrologis_db.dart';
+import 'package:dart_hydrologis_utils/dart_hydrologis_utils.dart';
 import 'package:dart_jts/dart_jts.dart';
 import 'package:dart_postgis/dart_postgis.dart';
 import 'package:test/test.dart';
@@ -66,41 +67,41 @@ void main() {
     });
 
     test('Test geometry reading', () async {
-      PGQueryResult result =
+      FeatureCollection result =
           await db.getTableData(tableName, where: "name like 'Point%'");
-      expect(result.data.length, 2);
+      expect(result.features.length, 2);
       expect(result.geomName, "geom");
       for (var i = 0; i < 2; i++) {
-        var name = result.data[i]["name"];
+        var name = result.features[i].attributes["name"];
         if (name == "Point") {
-          expect(result.geoms[i].toText(), "POINT (0 0)");
+          expect(result.features[i].geometry!.toText(), "POINT (0 0)");
         } else {
-          expect(result.geoms[i].toText(), "POINT (-2 2)");
-          expect(result.data[i]["name"], "Point2");
+          expect(result.features[i].geometry!.toText(), "POINT (-2 2)");
+          expect(result.features[i].attributes["name"], "Point2");
         }
       }
 
       result =
           await db.getTableData(tableName, where: "name = 'PolygonWithHole'");
-      expect(result.data.length, 1);
+      expect(result.features.length, 1);
       expect(result.geomName, "geom");
-      expect(result.geoms[0].toText(),
+      expect(result.features[0].geometry!.toText(),
           "POLYGON ((0 0, 10 0, 10 10, 0 10, 0 0), (1 1, 1 2, 2 2, 2 1, 1 1))");
-      expect(result.data[0]["name"], "PolygonWithHole");
+      expect(result.features[0].attributes["name"], "PolygonWithHole");
 
       result = await db.getTableData(tableName, where: "name = 'MultiPolygon'");
-      expect(result.data.length, 1);
+      expect(result.features.length, 1);
       expect(result.geomName, "geom");
-      expect(result.geoms[0].toText(),
+      expect(result.features[0].geometry!.toText(),
           "MULTIPOLYGON (((1 1, 3 1, 3 3, 1 3, 1 1), (1 1, 2 1, 2 2, 1 2, 1 1)), ((-1 -1, -1 -2, -2 -2, -2 -1, -1 -1)))");
-      expect(result.data[0]["name"], "MultiPolygon");
+      expect(result.features[0].attributes["name"], "MultiPolygon");
 
       result = await db.getTableData(tableName, where: "name = 'Collection'");
-      expect(result.data.length, 1);
+      expect(result.features.length, 1);
       expect(result.geomName, "geom");
-      expect(result.geoms[0].toText(),
+      expect(result.features[0].geometry!.toText(),
           "GEOMETRYCOLLECTION (POLYGON ((1 1, 2 1, 2 2, 1 2, 1 1)), POINT (2 3), LINESTRING (2 3, 3 4))");
-      expect(result.data[0]["name"], "Collection");
+      expect(result.features[0].attributes["name"], "Collection");
     });
 
     test('Spatial query test', () async {
@@ -159,8 +160,7 @@ Future checkInsertSelect(WKTReader wktReader, String geomTxt,
   // print(geomBytes);
   var sql = "insert into ${tableName2.fixedDoubleName} values (?, ?)";
   await db.execute(sql, arguments: [name, geomBytes]);
-  PGQueryResult result =
-      await db.getTableData(tableName2, where: "name = '$name'");
-  expect(result.data.length, 1);
-  expect(result.geoms[0].toText(), geomTxt);
+  var result = await db.getTableData(tableName2, where: "name = '$name'");
+  expect(result.features.length, 1);
+  expect(result.features[0].geometry!.toText(), geomTxt);
 }
