@@ -6,7 +6,7 @@ repository: https://github.com/moovida/dart_postgis
 issue_tracker: https://github.com/moovida/dart_postgis/issues
 
 environment:
-  sdk: ">=2.12.0 <3.0.0"
+  sdk: ">=2.12.0 <4.0.0"
 
 dependencies:
   #  path: ^1.7.0
@@ -23,7 +23,7 @@ dependencies:
   # MIT
   proj4dart: ^2.1.0
 
-  dart_hydrologis_utils: ^0.6.3
+  dart_hydrologis_utils: ^0.7.0
 
 dev_dependencies:
   pedantic: ^1.9.0
