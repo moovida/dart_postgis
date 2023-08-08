@@ -1,6 +1,6 @@
 name: dart_postgis
 description: A module to support postgis.
-version: 0.3.2
+version: 0.3.2+1
 homepage: https://github.com/moovida/dart_postgis
 repository: https://github.com/moovida/dart_postgis
 issue_tracker: https://github.com/moovida/dart_postgis/issues
@@ -23,7 +23,7 @@ dependencies:
   # MIT
   proj4dart: ^2.1.0
 
-  dart_hydrologis_utils: ^0.7.0
+  dart_hydrologis_utils: ^0.8.0
 
 dev_dependencies:
   pedantic: ^1.9.0
