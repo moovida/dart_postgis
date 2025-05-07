@@ -308,7 +308,7 @@ class PostgisDb {
         gcAndSrid[0] +
         post +
         " as the_geom, $pk $userDataSql FROM " +
-        tableName.fixedName;
+        tableName.fixedDoubleName;
 
     if (intersectionGeometry != null) {
       intersectionGeometry.setSRID(gcAndSrid[1]);
@@ -393,7 +393,7 @@ class PostgisDb {
       queryResult.geomName = geometryColumn.geometryColumnName;
     }
 
-    String sql = "select * from " + tableName.fixedName;
+    String sql = "select * from " + tableName.fixedDoubleName;
 
     if (envelope != null && geometry != null) {
       throw ArgumentError("Only one of envelope and geometry have to be set.");

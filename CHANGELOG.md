@@ -1,3 +1,7 @@
+## 0.3.3
+
+Fixes for reading table names with special format.
+
 ## 0.3.2
 
 - Move geometrycolumn and features to utils lib to have common with geopackage.
