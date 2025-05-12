@@ -565,9 +565,9 @@ class PostgisDb {
   }
 
   Future<bool> checkStyleTable() async {
-    if (!await _postgresDb.hasTable(TableName(HM_STYLES_TABLE)) &&
-        _canCreateTable) {
-      var createTablesQuery = '''
+    if (!await _postgresDb.hasTable(TableName(HM_STYLES_TABLE))) {
+      if (_canCreateTable) {
+        var createTablesQuery = '''
       CREATE TABLE $HM_STYLES_TABLE (  
         tablename TEXT NOT NULL,
         sld TEXT,
@@ -575,18 +575,22 @@ class PostgisDb {
       );
       CREATE UNIQUE INDEX ${HM_STYLES_TABLE}_tablename_idx ON $HM_STYLES_TABLE (tablename);
     ''';
-      var split = createTablesQuery.replaceAll("\n", "").trim().split(";");
-      for (int i = 0; i < split.length; i++) {
-        var sql = split[i].trim();
-        if (sql.isNotEmpty) {
-          try {
-            await _postgresDb.execute(sql);
-            _canHanldeStyle = true;
-          } catch (e) {
-            _canHanldeStyle = false;
-            return false;
+        var split = createTablesQuery.replaceAll("\n", "").trim().split(";");
+        for (int i = 0; i < split.length; i++) {
+          var sql = split[i].trim();
+          if (sql.isNotEmpty) {
+            try {
+              await _postgresDb.execute(sql);
+              _canHanldeStyle = true;
+            } catch (e) {
+              _canHanldeStyle = false;
+              return false;
+            }
           }
         }
+        _canHanldeStyle = true;
+      } else {
+        _canHanldeStyle = false;
       }
     } else {
       _canHanldeStyle = true;
