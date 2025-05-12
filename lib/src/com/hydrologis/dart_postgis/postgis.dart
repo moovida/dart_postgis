@@ -14,6 +14,7 @@ class PostgisDb {
   String? pwd;
   int port;
   bool? _canHanldeStyle;
+  bool _canCreateTable = true;
 
   late String jdbcUrl;
 
@@ -64,7 +65,14 @@ class PostgisDb {
       return false;
     }
 
-    var res = await _postgresDb.select("SELECT PostGIS_full_version();");
+    // check if the user can create tables
+    var res = await _postgresDb
+        .select("SELECT has_database_privilege('$user','$_dbName','CREATE')");
+    if (res != null && res.length == 1) {
+      _canCreateTable = res.first.getAt(0);
+    }
+
+    res = await _postgresDb.select("SELECT PostGIS_full_version();");
     if (res == null) {
       return false;
     }
@@ -78,6 +86,10 @@ class PostgisDb {
   }
 
   String get version => pgVersion;
+
+  bool canCreateTable() {
+    return _canCreateTable;
+  }
 
   Future<void> close() async {
     await _postgresDb.close();

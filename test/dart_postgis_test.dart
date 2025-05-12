@@ -48,6 +48,9 @@ void main() {
     });
 
     test('Check utils', () async {
+      var canCreateTable = db.canCreateTable();
+      expect(canCreateTable, isTrue);
+
       bool hasTable = await db.hasTable(tableName);
       expect(hasTable, isTrue);
 
