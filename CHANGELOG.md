@@ -1,3 +1,7 @@
+## 0.3.3+1
+
+Add check for can create table.
+
 ## 0.3.3
 
 Fixes for reading table names with special format.
