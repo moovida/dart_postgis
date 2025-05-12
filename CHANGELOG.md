@@ -1,6 +1,7 @@
-## 0.3.3+1
+## 0.3.3+1/3
 
-Add check for can create table.
+- Add check for can create table.
+- Deps upgrades.
 
 ## 0.3.3
 

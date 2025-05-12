@@ -125,10 +125,10 @@ packages:
     dependency: "direct main"
     description:
       name: dart_jts
-      sha256: fddf640b9369a08c0028d3dcbda5a08ea63f6d4cdb17da9822dca31cbedab516
+      sha256: f9cb8b359346f453b5bfa2186fcd7fb8a7e6fbc7e076cba46898b44edd6fd8c7
       url: "https://pub.dev"
     source: hosted
-    version: "0.2.6"
+    version: "0.3.0+1"
   ffi:
     dependency: transitive
     description:
