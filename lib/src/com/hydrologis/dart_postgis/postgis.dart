@@ -565,7 +565,8 @@ class PostgisDb {
   }
 
   Future<bool> checkStyleTable() async {
-    if (!await _postgresDb.hasTable(TableName(HM_STYLES_TABLE))) {
+    if (!await _postgresDb.hasTable(TableName(HM_STYLES_TABLE)) &&
+        _canCreateTable) {
       var createTablesQuery = '''
       CREATE TABLE $HM_STYLES_TABLE (  
         tablename TEXT NOT NULL,
