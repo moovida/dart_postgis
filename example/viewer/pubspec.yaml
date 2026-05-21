@@ -1,0 +1,26 @@
+name: hydrologis_db_viewer
+description: PostGIS/PostgreSQL database viewer built on dart_postgis.
+publish_to: none
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.10.7
+
+dependencies:
+  flutter:
+    sdk: flutter
+  dart_postgis:
+    path: ../../
+  dart_hydrologis_db: ^1.1.0
+  multi_split_view: ^2.3.0
+  data_table_2: ^2.5.12
+  provider: ^6.1.2
+  shared_preferences: ^2.3.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

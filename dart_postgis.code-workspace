@@ -1,0 +1,34 @@
+{
+    "folders": [
+        { "name": "dart_postgis (library)", "path": "." },
+        { "name": "viewer (Flutter)", "path": "example/viewer" }
+    ],
+    "settings": {
+        "dart.projectSearchDepth": 3
+    },
+    "launch": {
+        "version": "0.2.0",
+        "configurations": [
+            {
+                "name": "viewer",
+                "cwd": "${workspaceFolder:viewer (Flutter)}",
+                "request": "launch",
+                "type": "dart"
+            },
+            {
+                "name": "viewer (profile mode)",
+                "cwd": "${workspaceFolder:viewer (Flutter)}",
+                "request": "launch",
+                "type": "dart",
+                "flutterMode": "profile"
+            },
+            {
+                "name": "viewer (release mode)",
+                "cwd": "${workspaceFolder:viewer (Flutter)}",
+                "request": "launch",
+                "type": "dart",
+                "flutterMode": "release"
+            }
+        ]
+    }
+}
