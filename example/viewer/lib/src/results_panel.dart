@@ -2,7 +2,7 @@ import 'package:data_table_2/data_table_2.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'app_state.dart';
-import 'wkb_to_wkt.dart';
+import 'wkb_to_wkt.dart' show wkbToWkt;
 
 class ResultsPanel extends StatelessWidget {
   const ResultsPanel({super.key});
@@ -168,9 +168,8 @@ class _ResultsBody extends StatelessWidget {
         return DataRow2(
           cells: List.generate(columns.length, (ci) {
             final raw = ci < row.length ? row[ci] : null;
-            final rawStr = raw?.toString();
-            final wkt = rawStr != null ? wkbHexToWkt(rawStr) : null;
-            final full = wkt ?? rawStr;
+            final wkt = wkbToWkt(raw);
+            final full = wkt ?? raw?.toString();
             final display = _format(raw, wkt);
             final needsTooltip =
                 full != null && display.length < full.length;
