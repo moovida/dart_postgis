@@ -86,6 +86,15 @@ class _PanelHeader extends StatelessWidget {
   }
 }
 
+// ── Pre-computed per-cell data (built once per result, not per frame) ─────────
+
+class _CellData {
+  final String display;
+  final String? wkt;  // non-null → geometry cell
+  final String? tip;  // non-null → display was truncated, tip holds full text
+  const _CellData({required this.display, this.wkt, this.tip});
+}
+
 // ── Body ──────────────────────────────────────────────────────────────────────
 
 class _ResultsBody extends StatefulWidget {
@@ -101,12 +110,31 @@ class _ResultsBodyState extends State<_ResultsBody> {
   static const _minColW = 40.0;
   static const _hMargin = 8.0;
 
+  // Const text styles — avoids creating new TextStyle objects on every build
+  static const _styleNormal = TextStyle(
+      fontSize: 12, fontFamily: 'monospace', color: Color(0xFF212121));
+  static const _styleNull = TextStyle(
+      fontSize: 12,
+      fontFamily: 'monospace',
+      color: Color(0xFFBBBBCC),
+      fontStyle: FontStyle.italic);
+
   List<double> _colWidths = [];
   List<String> _lastColumns = [];
+
+  // Cell data cache — rebuilt once per result, not per frame
+  List<List<_CellData>> _cache = [];
+  ViewerResult? _cachedResult;
 
   // Multi-cell selection: (rowIndex, colIndex)
   final Set<(int, int)> _selected = {};
   (int, int)? _lastTapped;
+
+  @override
+  void initState() {
+    super.initState();
+    _rebuildCache(widget.result);
+  }
 
   @override
   void didUpdateWidget(_ResultsBody old) {
@@ -116,6 +144,9 @@ class _ResultsBodyState extends State<_ResultsBody> {
         cols.join('\x00') != _lastColumns.join('\x00')) {
       _initWidths(cols);
     }
+    if (!identical(widget.result, _cachedResult)) {
+      _rebuildCache(widget.result);
+    }
   }
 
   void _initWidths(List<String> cols) {
@@ -123,6 +154,36 @@ class _ResultsBodyState extends State<_ResultsBody> {
     _colWidths = List.filled(cols.length, _defaultColW);
     _selected.clear();
     _lastTapped = null;
+  }
+
+  /// Builds the cell cache from the result. Called once per new result.
+  void _rebuildCache(ViewerResult? result) {
+    _cachedResult = result;
+    if (result == null || result.isError || result.columns.isEmpty) {
+      _cache = [];
+      return;
+    }
+    final rows = result.rows;
+    final numCols = result.columns.length;
+    _cache = List.generate(rows.length, (ri) {
+      return List.generate(numCols, (ci) {
+        final raw = ci < rows[ri].length ? rows[ri][ci] : null;
+        final wkt = wkbToWkt(raw);
+        final full = wkt ?? raw?.toString();
+        final display = _formatCell(raw, wkt);
+        final tip = (wkt == null && full != null && display.length < full.length)
+            ? full
+            : null;
+        return _CellData(display: display, wkt: wkt, tip: tip);
+      });
+    });
+  }
+
+  static String _formatCell(dynamic value, String? wkt) {
+    if (value == null) return 'NULL';
+    final s = wkt ?? value.toString();
+    if (s.length > 80) return '${s.substring(0, 77)}…';
+    return s;
   }
 
   @override
@@ -170,117 +231,160 @@ class _ResultsBodyState extends State<_ResultsBody> {
     final rows = result.rows;
     if (_colWidths.length != columns.length) _initWidths(columns);
 
-    return DataTable2(
-      columnSpacing: 0,
-      horizontalMargin: _hMargin,
-      // Must exceed sum(fixedWidths) + 2*horizontalMargin for DataTable2 assertion
-      minWidth: _colWidths.fold<double>(0.0, (s, w) => s + w) + 2 * _hMargin + 1,
-      headingRowHeight: 32,
-      dataRowHeight: 28,
-      headingRowColor: WidgetStateProperty.all(const Color(0xFFEEF2FF)),
-      border: TableBorder.all(color: const Color(0xFFD4DCF0), width: 0.5),
-      columns: List.generate(columns.length, (i) => _buildColumn(i, columns[i])),
-      rows: List.generate(rows.length, (ri) {
-        return DataRow2(
-          cells: List.generate(columns.length, (ci) {
-            final raw = ci < rows[ri].length ? rows[ri][ci] : null;
-            final wkt = wkbToWkt(raw);
-            final full = wkt ?? raw?.toString();
-            final display = _format(raw, wkt);
-            // Tooltip only for truncated plain text (not geometry — dialog covers that)
-            final isTruncated =
-                wkt == null && full != null && display.length < full.length;
-            return DataCell(
-                _buildCell(context, ri, ci, wkt, display, full, isTruncated));
-          }),
-        );
-      }),
+    // One MouseRegion covers all cells; resize-handle MouseRegions in headers
+    // override it locally via the standard Flutter hit-test cascade.
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: DataTable2(
+        columnSpacing: 0,
+        horizontalMargin: _hMargin,
+        minWidth: _colWidths.fold<double>(0.0, (s, w) => s + w) + 2 * _hMargin + 1,
+        headingRowHeight: 32,
+        dataRowHeight: 28,
+        headingRowColor: WidgetStateProperty.all(const Color(0xFFEEF2FF)),
+        border: TableBorder.all(color: const Color(0xFFD4DCF0), width: 0.5),
+        columns: List.generate(columns.length, (i) => _buildColumn(context, i, columns[i])),
+        rows: List.generate(rows.length, (ri) {
+          final rowCache = ri < _cache.length ? _cache[ri] : const <_CellData>[];
+          return DataRow2(
+            cells: List.generate(columns.length, (ci) {
+              final cd = ci < rowCache.length
+                  ? rowCache[ci]
+                  : const _CellData(display: '');
+              return DataCell(_buildCell(context, ri, ci, cd));
+            }),
+          );
+        }),
+      ),
     );
   }
 
   // ── Column header with resize handle ──────────────────────────────────────
 
-  DataColumn2 _buildColumn(int i, String name) {
+  DataColumn2 _buildColumn(BuildContext ctx, int i, String name) {
     return DataColumn2(
       fixedWidth: _colWidths[i],
-      label: Row(
-        children: [
-          Expanded(
-            child: Text(name,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: Color(0xFF1565C0),
-                  fontWeight: FontWeight.w600,
-                  fontFamily: 'monospace',
-                )),
-          ),
-          MouseRegion(
-            cursor: SystemMouseCursors.resizeColumn,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onHorizontalDragUpdate: (d) => setState(
-                  () => _colWidths[i] = max(_minColW, _colWidths[i] + d.delta.dx)),
-              child: Container(
-                width: 7,
-                height: 32,
-                decoration: const BoxDecoration(
-                  border: Border(
-                      left: BorderSide(color: Color(0xFFCCCCDD), width: 1)),
+      label: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onSecondaryTapUp: (e) =>
+            _onColumnRightClick(ctx, e.globalPosition, i),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(name,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF1565C0),
+                    fontWeight: FontWeight.w600,
+                    fontFamily: 'monospace',
+                  )),
+            ),
+            MouseRegion(
+              cursor: SystemMouseCursors.resizeColumn,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onHorizontalDragUpdate: (d) => setState(
+                    () => _colWidths[i] = max(_minColW, _colWidths[i] + d.delta.dx)),
+                child: Container(
+                  width: 7,
+                  height: 32,
+                  decoration: const BoxDecoration(
+                    border: Border(
+                        left: BorderSide(color: Color(0xFFCCCCDD), width: 1)),
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
+  void _onColumnRightClick(BuildContext ctx, Offset pos, int ci) {
+    final colWkts = <String>[];
+    final colValues = <String>[];
+    for (int ri = 0; ri < _cache.length; ri++) {
+      if (ci < _cache[ri].length) {
+        final cd = _cache[ri][ci];
+        colValues.add(cd.tip ?? cd.wkt ?? cd.display);
+        if (cd.wkt != null) colWkts.add(cd.wkt!);
+      }
+    }
+    final hasGeom = colWkts.isNotEmpty;
+
+    showMenu<String>(
+      context: ctx,
+      position: RelativeRect.fromLTRB(pos.dx, pos.dy, pos.dx + 1, pos.dy + 1),
+      items: [
+        PopupMenuItem(
+          value: 'copy',
+          height: 36,
+          child: Row(children: [
+            const Icon(Icons.copy, size: 14, color: Color(0xFF424242)),
+            const SizedBox(width: 8),
+            Text('Copy ${colValues.length} values',
+                style: const TextStyle(fontSize: 13)),
+          ]),
+        ),
+        if (hasGeom)
+          PopupMenuItem(
+            value: 'view',
+            height: 36,
+            child: Row(children: [
+              const Icon(Icons.place, size: 14, color: Color(0xFF2E7D32)),
+              const SizedBox(width: 8),
+              Text('View ${colWkts.length} geometries',
+                  style: const TextStyle(fontSize: 13)),
+            ]),
+          ),
+      ],
+    ).then((value) {
+      if (!mounted) return;
+      if (value == 'copy') {
+        Clipboard.setData(ClipboardData(text: colValues.join('\n')));
+      } else if (value == 'view') {
+        showDialog(
+          context: context,
+          builder: (_) => GeometryPreviewDialog(wkts: colWkts),
+        );
+      }
+    });
+  }
+
   // ── Cell ──────────────────────────────────────────────────────────────────
 
-  Widget _buildCell(BuildContext ctx, int ri, int ci, String? wkt,
-      String display, String? full, bool isTruncated) {
+  Widget _buildCell(BuildContext ctx, int ri, int ci, _CellData cd) {
     final isSelected = _selected.contains((ri, ci));
 
-    Widget cell = MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => _onTap(ri, ci),
-        onSecondaryTapUp: (e) =>
-            _onRightClick(ctx, e.globalPosition, ri, ci, wkt, full),
-        child: Container(
-          width: double.infinity,
-          color: isSelected ? const Color(0x281565C0) : null,
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          alignment: Alignment.centerLeft,
-          child: Text(
-            display,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 12,
-              fontFamily: 'monospace',
-              color: display == 'NULL'
-                  ? const Color(0xFFBBBBCC)
-                  : const Color(0xFF212121),
-              fontStyle:
-                  display == 'NULL' ? FontStyle.italic : FontStyle.normal,
-            ),
-          ),
+    Widget inner = GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _onTap(ri, ci),
+      onSecondaryTapUp: (e) =>
+          _onRightClick(ctx, e.globalPosition, ri, ci, cd),
+      child: Container(
+        width: double.infinity,
+        color: isSelected ? const Color(0x281565C0) : null,
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        alignment: Alignment.centerLeft,
+        child: Text(
+          cd.display,
+          overflow: TextOverflow.ellipsis,
+          style: cd.display == 'NULL' ? _styleNull : _styleNormal,
         ),
       ),
     );
 
-    // Tooltip only for truncated non-geometry text
-    if (isTruncated) {
-      cell = Tooltip(
-        message: full!,
+    if (cd.tip != null) {
+      inner = Tooltip(
+        message: cd.tip!,
         textStyle: const TextStyle(fontSize: 11, fontFamily: 'monospace'),
-        child: cell,
+        child: inner,
       );
     }
 
-    return cell;
+    return inner;
   }
 
   // ── Selection logic ───────────────────────────────────────────────────────
@@ -312,8 +416,8 @@ class _ResultsBodyState extends State<_ResultsBody> {
     });
   }
 
-  void _onRightClick(BuildContext ctx, Offset pos, int ri, int ci, String? wkt,
-      String? full) {
+  void _onRightClick(
+      BuildContext ctx, Offset pos, int ri, int ci, _CellData cd) {
     if (!_selected.contains((ri, ci))) {
       setState(() {
         _selected
@@ -325,9 +429,8 @@ class _ResultsBodyState extends State<_ResultsBody> {
 
     final n = _selected.length;
     final copyLabel = n > 1 ? 'Copy $n cells' : 'Copy';
-    final toCopy = n > 1 ? _selectedAsTsv() : (full ?? '');
+    final toCopy = n > 1 ? _selectedAsTsv() : (cd.tip ?? cd.wkt ?? cd.display);
 
-    // Collect WKTs from all selected cells (may span multiple geometry columns)
     final selectedWkts = _selectedGeomWkts();
     final hasGeom = selectedWkts.isNotEmpty;
     final geomLabel = selectedWkts.length > 1
@@ -336,8 +439,7 @@ class _ResultsBodyState extends State<_ResultsBody> {
 
     showMenu<String>(
       context: ctx,
-      position:
-          RelativeRect.fromLTRB(pos.dx, pos.dy, pos.dx + 1, pos.dy + 1),
+      position: RelativeRect.fromLTRB(pos.dx, pos.dy, pos.dx + 1, pos.dy + 1),
       items: [
         PopupMenuItem(
           value: 'copy',
@@ -372,37 +474,32 @@ class _ResultsBodyState extends State<_ResultsBody> {
     });
   }
 
-  /// Returns WKT strings for every selected cell that contains geometry.
+  /// WKT strings for every selected geometry cell — reads from cache, no reparse.
   List<String> _selectedGeomWkts() {
-    final rows = widget.result!.rows;
     final wkts = <String>[];
     for (final (r, c) in _selected) {
-      final raw = c < rows[r].length ? rows[r][c] : null;
-      final w = wkbToWkt(raw);
-      if (w != null) wkts.add(w);
+      if (r < _cache.length && c < _cache[r].length) {
+        final w = _cache[r][c].wkt;
+        if (w != null) wkts.add(w);
+      }
     }
     return wkts;
   }
 
-  /// Builds tab-separated (TSV) text from the current selection, row by row.
+  /// TSV of the current selection — reads from cache, no reparse.
   String _selectedAsTsv() {
-    final rows = widget.result!.rows;
     final byRow = <int, List<int>>{};
     for (final (r, c) in _selected) {
       byRow.putIfAbsent(r, () => []).add(c);
     }
     return (byRow.keys.toList()..sort())
         .map((r) => (byRow[r]!..sort()).map((c) {
-              final raw = c < rows[r].length ? rows[r][c] : null;
-              return wkbToWkt(raw) ?? raw?.toString() ?? '';
+              if (r < _cache.length && c < _cache[r].length) {
+                final cd = _cache[r][c];
+                return cd.tip ?? cd.wkt ?? cd.display;
+              }
+              return '';
             }).join('\t'))
         .join('\n');
-  }
-
-  String _format(dynamic value, String? wkt) {
-    if (value == null) return 'NULL';
-    final s = wkt ?? value.toString();
-    if (s.length > 80) return '${s.substring(0, 77)}…';
-    return s;
   }
 }

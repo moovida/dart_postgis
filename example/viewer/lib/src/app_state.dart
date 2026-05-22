@@ -367,7 +367,7 @@ class AppState extends ChangeNotifier {
       sql = 'SELECT *\nFROM ${table.fullName}';
     }
 
-    if (applyLimit) sql = '$sql\nLIMIT $queryLimit';
+    sql = '$sql\nLIMIT 100';
     await _runSql(sql);
   }
 
