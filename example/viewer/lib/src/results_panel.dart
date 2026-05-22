@@ -18,8 +18,15 @@ class ResultsPanel extends StatelessWidget {
       child: Column(
         children: [
           _PanelHeader(result: state.queryResult, executing: state.isExecuting),
+          _FormatDatesBar(state: state),
           const Divider(height: 1, color: Color(0xFFDDDDEE)),
-          Expanded(child: _ResultsBody(result: state.queryResult)),
+          Expanded(
+            child: _ResultsBody(
+              result: state.queryResult,
+              formatDates: state.formatDates,
+              datePatterns: state.datePatterns,
+            ),
+          ),
         ],
       ),
     );
@@ -86,6 +93,95 @@ class _PanelHeader extends StatelessWidget {
   }
 }
 
+// ── Format-dates control bar ──────────────────────────────────────────────────
+
+class _FormatDatesBar extends StatefulWidget {
+  final AppState state;
+  const _FormatDatesBar({required this.state});
+
+  @override
+  State<_FormatDatesBar> createState() => _FormatDatesBarState();
+}
+
+class _FormatDatesBarState extends State<_FormatDatesBar> {
+  late final TextEditingController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: widget.state.datePatterns);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = widget.state;
+    return Container(
+      height: 30,
+      color: const Color(0xFFF5F7FF),
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 18,
+            height: 18,
+            child: Checkbox(
+              value: state.formatDates,
+              onChanged: (v) => state.setFormatDates(v ?? false),
+              side: const BorderSide(color: Color(0xFFBBBBCC)),
+              fillColor: WidgetStateProperty.resolveWith((s) =>
+                  s.contains(WidgetState.selected)
+                      ? const Color(0xFF1565C0)
+                      : Colors.transparent),
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+          ),
+          const SizedBox(width: 6),
+          const Text('Format dates',
+              style: TextStyle(fontSize: 11, color: Color(0xFF616161))),
+          const SizedBox(width: 10),
+          const Text('patterns',
+              style: TextStyle(fontSize: 11, color: Color(0xFF9E9E9E))),
+          const SizedBox(width: 6),
+          Expanded(
+            child: SizedBox(
+            height: 22,
+            child: TextField(
+              controller: _ctrl,
+              style: const TextStyle(
+                  fontSize: 11,
+                  fontFamily: 'monospace',
+                  color: Color(0xFF212121)),
+              decoration: const InputDecoration(
+                contentPadding:
+                    EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                fillColor: Colors.white,
+                filled: true,
+                border: OutlineInputBorder(
+                    borderSide: BorderSide(color: Color(0xFFCCCCDD))),
+                enabledBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: Color(0xFFCCCCDD))),
+                focusedBorder: OutlineInputBorder(
+                    borderSide:
+                        BorderSide(color: Color(0xFF1565C0), width: 1.5)),
+                isDense: true,
+              ),
+              onChanged: state.setDatePatterns,
+              onSubmitted: state.setDatePatterns,
+            ),
+          ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 // ── Pre-computed per-cell data (built once per result, not per frame) ─────────
 
 class _CellData {
@@ -99,7 +195,13 @@ class _CellData {
 
 class _ResultsBody extends StatefulWidget {
   final ViewerResult? result;
-  const _ResultsBody({required this.result});
+  final bool formatDates;
+  final String datePatterns;
+  const _ResultsBody({
+    required this.result,
+    required this.formatDates,
+    required this.datePatterns,
+  });
 
   @override
   State<_ResultsBody> createState() => _ResultsBodyState();
@@ -144,7 +246,9 @@ class _ResultsBodyState extends State<_ResultsBody> {
         cols.join('\x00') != _lastColumns.join('\x00')) {
       _initWidths(cols);
     }
-    if (!identical(widget.result, _cachedResult)) {
+    if (!identical(widget.result, _cachedResult) ||
+        widget.formatDates != old.formatDates ||
+        widget.datePatterns != old.datePatterns) {
       _rebuildCache(widget.result);
     }
   }
@@ -163,27 +267,54 @@ class _ResultsBodyState extends State<_ResultsBody> {
       _cache = [];
       return;
     }
+
+    // Pre-compute which columns should be formatted as epoch dates.
+    final dateCols = <int>{};
+    if (widget.formatDates) {
+      final pats = widget.datePatterns
+          .split(',')
+          .map((p) => p.trim().toLowerCase())
+          .where((p) => p.isNotEmpty)
+          .toList();
+      for (int ci = 0; ci < result.columns.length; ci++) {
+        final col = result.columns[ci].toLowerCase();
+        if (pats.any((p) => col.contains(p))) dateCols.add(ci);
+      }
+    }
+
     final rows = result.rows;
     final numCols = result.columns.length;
     _cache = List.generate(rows.length, (ri) {
       return List.generate(numCols, (ci) {
         final raw = ci < rows[ri].length ? rows[ri][ci] : null;
         final wkt = wkbToWkt(raw);
-        final full = wkt ?? raw?.toString();
-        final display = _formatCell(raw, wkt);
-        final tip = (wkt == null && full != null && display.length < full.length)
-            ? full
-            : null;
+        final dateStr =
+            (dateCols.contains(ci) && raw is int) ? _epochToString(raw) : null;
+        final full = dateStr ?? wkt ?? raw?.toString();
+        final display = _formatCell(raw, wkt, dateStr);
+        final tip =
+            (wkt == null && dateStr == null && full != null && display.length < full.length)
+                ? full
+                : null;
         return _CellData(display: display, wkt: wkt, tip: tip);
       });
     });
   }
 
-  static String _formatCell(dynamic value, String? wkt) {
+  static String _formatCell(dynamic value, String? wkt, String? dateStr) {
     if (value == null) return 'NULL';
+    if (dateStr != null) return dateStr;
     final s = wkt ?? value.toString();
     if (s.length > 80) return '${s.substring(0, 77)}…';
     return s;
+  }
+
+  static String _epochToString(int v) {
+    final ms = v > 10000000000 ? v : v * 1000;
+    final dt = DateTime.fromMillisecondsSinceEpoch(ms);
+    String p(int n, [int w = 2]) => n.toString().padLeft(w, '0');
+    return '${p(dt.year, 4)}-${p(dt.month)}-${p(dt.day)} '
+        '${p(dt.hour)}:${p(dt.minute)}:${p(dt.second)}';
   }
 
   @override

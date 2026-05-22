@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'app_state.dart';
+import 'history_dialog.dart';
 
 class SqlEditorPanel extends StatefulWidget {
   const SqlEditorPanel({super.key});
@@ -63,6 +64,29 @@ class _SqlEditorPanelState extends State<SqlEditorPanel>
                 // Limit controls
                 _LimitControls(state: state),
                 const SizedBox(width: 8),
+                // History button
+                _ToolbarBtn(
+                  icon: Icons.history,
+                  label: 'History',
+                  color: const Color(0xFF5C6BC0),
+                  onPressed: state.queryHistory.isEmpty
+                      ? null
+                      : () async {
+                          final result =
+                              await showDialog<HistoryResult>(
+                            context: context,
+                            builder: (_) => HistoryDialog(
+                                  history: state.queryHistory,
+                                  onRemove: state.removeFromHistory,
+                                ),
+                          );
+                          if (result != null && context.mounted) {
+                            state.setEditorSql(result.sql);
+                            if (result.run) state.executeQuery();
+                          }
+                        },
+                ),
+                const SizedBox(width: 4),
                 // Clear button
                 _ToolbarBtn(
                   icon: Icons.clear,

@@ -1,6 +1,7 @@
 import 'package:dart_hydrologis_db/dart_hydrologis_db.dart' as hdb;
 import 'package:dart_postgis/dart_postgis.dart' as pg;
 import 'package:flutter/material.dart';
+import 'query_history.dart';
 
 class ColumnItem {
   final String name;
@@ -87,6 +88,20 @@ class ViewerResult {
 class AppState extends ChangeNotifier {
   pg.PostgisDb? _db;
 
+  List<String> queryHistory = [];
+
+  AppState() {
+    QueryHistory.load().then((h) {
+      queryHistory = h;
+      notifyListeners();
+    });
+  }
+
+  Future<void> removeFromHistory(String sql) async {
+    queryHistory = await QueryHistory.remove(sql);
+    notifyListeners();
+  }
+
   bool _isConnected = false;
   bool _isLoading = false;
   String _status = 'Not connected.';
@@ -111,6 +126,18 @@ class AppState extends ChangeNotifier {
 
   int queryLimit = 1000;
   bool applyLimit = true;
+  bool formatDates = false;
+  String datePatterns = 'date, ts, timestamp';
+
+  void setFormatDates(bool v) {
+    formatDates = v;
+    notifyListeners();
+  }
+
+  void setDatePatterns(String v) {
+    datePatterns = v;
+    notifyListeners();
+  }
 
   bool get isConnected => _isConnected;
   bool get isLoading => _isLoading;
@@ -217,9 +244,20 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// Puts a SELECT * template in the active editor (not run).
-  void insertSelectStatement(TableItem table) {
-    _setEditorText('SELECT *\nFROM ${table.fullName};');
+  /// Puts a SELECT with explicit column names in the active editor (not run).
+  Future<void> insertSelectStatement(TableItem table) async {
+    if (_db == null) return;
+    await loadTableColumns(table);
+    final cols = table.columns;
+    if (cols == null || cols.isEmpty) {
+      _setEditorText('SELECT *\nFROM ${table.fullName};');
+      return;
+    }
+    final exprs = cols.map((c) {
+      if (c.isGeometry) return 'ST_AsText(${c.name}) AS ${c.name}';
+      return c.name;
+    }).join(',\n  ');
+    _setEditorText('SELECT\n  $exprs\nFROM ${table.fullName};');
   }
 
   /// Puts an INSERT template with all columns in the active editor (not run).
@@ -295,6 +333,8 @@ class AppState extends ChangeNotifier {
     });
     return wkts;
   }
+
+  void setEditorSql(String sql) => _setEditorText(sql);
 
   void _setEditorText(String sql) {
     final ctrl = editors[activeEditorIndex];
@@ -517,6 +557,10 @@ class AppState extends ChangeNotifier {
     if (_db == null) return;
     var sql = editors[activeEditorIndex].text.trim();
     if (sql.isEmpty) return;
+    QueryHistory.add(sql).then((h) {
+      queryHistory = h;
+      notifyListeners();
+    });
 
     final lsql = sql.toLowerCase();
     final isSelect = lsql.startsWith('select') ||

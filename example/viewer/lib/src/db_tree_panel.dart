@@ -202,7 +202,7 @@ class _TableNodeState extends State<_TableNode> {
         ),
         if (_expanded && table.columns != null) ...[
           ...table.columns!
-              .map((c) => _ColumnRow(col: c, indent: widget.indent + 16)),
+              .map((c) => _ColumnRow(col: c, table: table, indent: widget.indent + 16)),
           if (table.indexes != null && table.indexes!.isNotEmpty)
             _SectionHeader(label: 'Indexes', indent: widget.indent + 16),
           ...?table.indexes?.map((idx) => _IndexRow(idx: idx, indent: widget.indent + 24)),
@@ -333,7 +333,7 @@ class _TableNodeState extends State<_TableNode> {
           duration: const Duration(seconds: 4),
         ));
       case 'select':
-        state.insertSelectStatement(table);
+        await state.insertSelectStatement(table);
       case 'insert':
         await state.insertInsertStatement(table);
       case 'gen_inserts':
@@ -371,58 +371,139 @@ class _TableNodeState extends State<_TableNode> {
   }
 }
 
-class _ColumnRow extends StatelessWidget {
+class _ColumnRow extends StatefulWidget {
   final ColumnItem col;
+  final TableItem table;
   final double indent;
-  const _ColumnRow({required this.col, required this.indent});
+  const _ColumnRow({required this.col, required this.table, required this.indent});
+
+  @override
+  State<_ColumnRow> createState() => _ColumnRowState();
+}
+
+class _ColumnRowState extends State<_ColumnRow> {
+  bool _hovered = false;
+  bool _menuOpen = false;
+
+  Future<void> _showContextMenu(Offset pos) async {
+    setState(() => _menuOpen = true);
+    final selected = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(pos.dx, pos.dy, pos.dx + 1, pos.dy + 1),
+      constraints: const BoxConstraints(minWidth: 310),
+      items: [
+        _colMenuItem('select_col', Icons.table_rows_outlined, 'Select on column'),
+        _colMenuItem('group_count', Icons.bar_chart, 'Select and group-count on column'),
+        _colMenuItem('update_col', Icons.edit_outlined, 'Update on column'),
+      ],
+    );
+    if (!mounted) return;
+    setState(() => _menuOpen = false);
+    if (selected == null) return;
+    final col = widget.col;
+    final table = widget.table;
+    final String sql;
+    switch (selected) {
+      case 'select_col':
+        sql = 'SELECT *\nFROM ${table.fullName}\nWHERE ${col.name} = ?;';
+      case 'group_count':
+        sql = 'SELECT ${col.name}, count(*) AS count\n'
+            'FROM ${table.fullName}\n'
+            'GROUP BY ${col.name}\n'
+            'ORDER BY count DESC;';
+      case 'update_col':
+        sql = 'UPDATE ${table.fullName}\n'
+            'SET ${col.name} = <value>\n'
+            'WHERE <condition>;';
+      default:
+        return;
+    }
+    if (!mounted) return;
+    context.read<AppState>().setEditorSql(sql);
+  }
+
+  PopupMenuItem<String> _colMenuItem(String value, IconData icon, String label) {
+    return PopupMenuItem(
+      value: value,
+      height: 36,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      child: Row(children: [
+        Icon(icon, size: 15, color: const Color(0xFF424242)),
+        const SizedBox(width: 10),
+        Text(label, style: const TextStyle(fontSize: 13, color: Color(0xFF424242))),
+      ]),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final row = Padding(
-      padding: EdgeInsets.only(left: indent, right: 8, top: 2, bottom: 2),
-      child: Row(
-        children: [
-          Icon(
-            col.isPrimaryKey
-                ? Icons.key
-                : col.isGeometry
-                    ? Icons.place
-                    : Icons.short_text,
-            size: 12,
-            color: col.isPrimaryKey
-                ? const Color(0xFFF57F17)
-                : col.isGeometry
-                    ? const Color(0xFF2E7D32)
-                    : const Color(0xFF9E9E9E),
-          ),
-          const SizedBox(width: 5),
-          Expanded(
-            child: Text(
-              col.name,
-              style: const TextStyle(fontSize: 11, color: Color(0xFF616161)),
-              overflow: TextOverflow.ellipsis,
+    final col = widget.col;
+    final bg = _menuOpen
+        ? const Color(0xFFD0DEF5)
+        : _hovered
+            ? const Color(0xFFE8EFF7)
+            : Colors.transparent;
+
+    final inner = MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        onSecondaryTapUp: (e) => _showContextMenu(e.globalPosition),
+        child: Container(
+          color: bg,
+          child: Padding(
+            padding: EdgeInsets.only(
+                left: widget.indent, right: 8, top: 2, bottom: 2),
+            child: Row(
+              children: [
+                Icon(
+                  col.isPrimaryKey
+                      ? Icons.key
+                      : col.isGeometry
+                          ? Icons.place
+                          : Icons.short_text,
+                  size: 12,
+                  color: col.isPrimaryKey
+                      ? const Color(0xFFF57F17)
+                      : col.isGeometry
+                          ? const Color(0xFF2E7D32)
+                          : const Color(0xFF9E9E9E),
+                ),
+                const SizedBox(width: 5),
+                Expanded(
+                  child: Text(
+                    col.name,
+                    style: const TextStyle(fontSize: 11, color: Color(0xFF616161)),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                _chip(_shortType(col.type), const Color(0xFFEEF2FF),
+                    const Color(0xFF5C6BC0)),
+                if (col.isGeometry && col.srid != null) ...[
+                  const SizedBox(width: 3),
+                  _chip('EPSG:${col.srid}', const Color(0xFFE8F5E9),
+                      const Color(0xFF2E7D32)),
+                ],
+                if (col.isGeometry && col.hasSpatialIndex) ...[
+                  const SizedBox(width: 3),
+                  Tooltip(
+                    message: 'Spatial index',
+                    child: Icon(Icons.bolt,
+                        size: 11, color: const Color(0xFFF57F17)),
+                  ),
+                ],
+              ],
             ),
           ),
-          _chip(_shortType(col.type), const Color(0xFFEEF2FF), const Color(0xFF5C6BC0)),
-          if (col.isGeometry && col.srid != null) ...[
-            const SizedBox(width: 3),
-            _chip('EPSG:${col.srid}', const Color(0xFFE8F5E9), const Color(0xFF2E7D32)),
-          ],
-          if (col.isGeometry && col.hasSpatialIndex) ...[
-            const SizedBox(width: 3),
-            Tooltip(
-              message: 'Spatial index',
-              child: Icon(Icons.bolt, size: 11, color: const Color(0xFFF57F17)),
-            ),
-          ],
-        ],
+        ),
       ),
     );
+
     return Draggable<String>(
       data: col.name,
       feedback: _DragChip(col.name),
-      childWhenDragging: Opacity(opacity: 0.4, child: row),
-      child: row,
+      childWhenDragging: Opacity(opacity: 0.4, child: inner),
+      child: inner,
     );
   }
 
