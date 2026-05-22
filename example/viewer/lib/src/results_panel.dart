@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'app_state.dart';
+import 'db_viewer_theme.dart';
 import 'geometry_preview.dart';
 import 'wkb_to_wkt.dart' show wkbToWkt;
 
@@ -404,9 +405,9 @@ class _ResultsBodyState extends State<_ResultsBody> {
             Expanded(
               child: Text(name,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
-                    color: Color(0xFF1565C0),
+                    color: DbViewerTheme.of(ctx).primaryColor,
                     fontWeight: FontWeight.w600,
                     fontFamily: 'monospace',
                   )),
@@ -496,7 +497,9 @@ class _ResultsBodyState extends State<_ResultsBody> {
           _onRightClick(ctx, e.globalPosition, ri, ci, cd),
       child: Container(
         width: double.infinity,
-        color: isSelected ? const Color(0x281565C0) : null,
+        color: isSelected
+            ? DbViewerTheme.of(ctx).primaryColor.withValues(alpha: 0.15)
+            : null,
         padding: const EdgeInsets.symmetric(horizontal: 4),
         alignment: Alignment.centerLeft,
         child: Text(

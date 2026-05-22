@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'app_state.dart';
 import 'connection_dialog.dart';
 import 'db_tree_panel.dart';
+import 'db_viewer_theme.dart';
 import 'results_panel.dart';
 import 'sql_editor_panel.dart';
 
@@ -80,7 +81,7 @@ class _Toolbar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       height: 48,
-      color: const Color(0xFF1565C0),
+      color: DbViewerTheme.of(context).primaryColor,
       padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Row(
         children: [
@@ -200,9 +201,9 @@ class _SwitchDbDialog extends StatelessWidget {
             Container(
               padding:
                   const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: const BoxDecoration(
-                color: Color(0xFF1565C0),
-                borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
+              decoration: BoxDecoration(
+                color: DbViewerTheme.of(context).primaryColor,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
               ),
               child: Row(
                 children: [

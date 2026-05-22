@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'app_state.dart';
 import 'db_viewer_page.dart';
+import 'db_viewer_theme.dart';
+
+export 'db_viewer_theme.dart' show DbViewerThemeData, DbViewerTheme;
 
 /// Optional connection parameters for [DbViewerWidget].
 /// When provided the widget connects automatically on first build.
@@ -50,10 +53,14 @@ class DbViewerWidget extends StatefulWidget {
   /// Title shown in the blue toolbar.
   final String title;
 
+  /// Visual theme: colors and icons.  Defaults to the standard G-ANT look.
+  final DbViewerThemeData theme;
+
   const DbViewerWidget({
     super.key,
     this.connectionParams,
     this.title = 'G-ANT DB Viewer',
+    this.theme = const DbViewerThemeData(),
   });
 
   @override
@@ -91,9 +98,12 @@ class _DbViewerWidgetState extends State<DbViewerWidget> {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider.value(
-      value: _appState,
-      child: DbViewerPage(title: widget.title),
+    return DbViewerTheme(
+      data: widget.theme,
+      child: ChangeNotifierProvider.value(
+        value: _appState,
+        child: DbViewerPage(title: widget.title),
+      ),
     );
   }
 }

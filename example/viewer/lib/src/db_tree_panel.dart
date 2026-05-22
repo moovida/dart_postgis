@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'app_state.dart';
+import 'db_viewer_theme.dart';
 import 'geometry_preview.dart';
 
 class DbTreePanel extends StatelessWidget {
@@ -51,7 +52,7 @@ class _PanelHeader extends StatelessWidget {
       color: const Color(0xFFE8EFF7),
       child: Row(
         children: [
-          Icon(icon, size: 14, color: const Color(0xFF1565C0)),
+          Icon(icon, size: 14, color: DbViewerTheme.of(context).primaryColor),
           const SizedBox(width: 6),
           Expanded(
             child: Text(
@@ -118,9 +119,11 @@ class _SchemaNodeState extends State<_SchemaNode> {
             child: Row(
               children: [
                 Icon(
-                  _expanded ? Icons.folder_open : Icons.folder,
+                  _expanded
+                      ? DbViewerTheme.of(context).schemaOpenIcon
+                      : DbViewerTheme.of(context).schemaIcon,
                   size: 15,
-                  color: const Color(0xFFF57F17),
+                  color: DbViewerTheme.of(context).primaryKeyColor,
                 ),
                 const SizedBox(width: 6),
                 Expanded(
@@ -216,10 +219,11 @@ class _TableNodeState extends State<_TableNode> {
 
   Widget _tableRow(bool hasGeom, bool busy) {
     final table = widget.table;
+    final primary = DbViewerTheme.of(context).primaryColor;
     final bg = _menuOpen
-        ? const Color(0xFFD0DEF5)
+        ? Color.alphaBlend(primary.withValues(alpha: 0.16), Colors.white)
         : _hovered
-            ? const Color(0xFFE8EFF7)
+            ? Color.alphaBlend(primary.withValues(alpha: 0.07), Colors.white)
             : Colors.transparent;
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
@@ -241,11 +245,13 @@ class _TableNodeState extends State<_TableNode> {
                       child: Row(
                         children: [
                           Icon(
-                            hasGeom ? Icons.map : Icons.table_chart,
+                            hasGeom
+                                ? DbViewerTheme.of(context).spatialTableIcon
+                                : DbViewerTheme.of(context).tableIcon,
                             size: 14,
                             color: hasGeom
-                                ? const Color(0xFF2E7D32)
-                                : const Color(0xFF1565C0),
+                                ? DbViewerTheme.of(context).geometryColor
+                                : DbViewerTheme.of(context).primaryColor,
                           ),
                           const SizedBox(width: 6),
                           Expanded(
@@ -311,11 +317,11 @@ class _TableNodeState extends State<_TableNode> {
         _menuItem('gen_inserts', Icons.format_list_bulleted, 'Generate insert sql statements'),
         const PopupMenuDivider(height: 1),
         _menuItem('drop', Icons.delete_outline, 'Drop table statement',
-            color: const Color(0xFFB71C1C)),
+            color: DbViewerTheme.of(context).errorColor),
         if (hasGeom) ...[
           const PopupMenuDivider(height: 1),
           _menuItem('view_geoms', Icons.map_outlined, 'Quick view table geometries',
-              color: const Color(0xFF2E7D32)),
+              color: DbViewerTheme.of(context).geometryColor),
         ],
       ],
     );
@@ -438,10 +444,11 @@ class _ColumnRowState extends State<_ColumnRow> {
   @override
   Widget build(BuildContext context) {
     final col = widget.col;
+    final primary = DbViewerTheme.of(context).primaryColor;
     final bg = _menuOpen
-        ? const Color(0xFFD0DEF5)
+        ? Color.alphaBlend(primary.withValues(alpha: 0.16), Colors.white)
         : _hovered
-            ? const Color(0xFFE8EFF7)
+            ? Color.alphaBlend(primary.withValues(alpha: 0.07), Colors.white)
             : Colors.transparent;
 
     final inner = MouseRegion(
@@ -458,15 +465,15 @@ class _ColumnRowState extends State<_ColumnRow> {
               children: [
                 Icon(
                   col.isPrimaryKey
-                      ? Icons.key
+                      ? DbViewerTheme.of(context).primaryKeyIcon
                       : col.isGeometry
-                          ? Icons.place
-                          : Icons.short_text,
+                          ? DbViewerTheme.of(context).spatialColumnIcon
+                          : DbViewerTheme.of(context).columnIcon,
                   size: 12,
                   color: col.isPrimaryKey
-                      ? const Color(0xFFF57F17)
+                      ? DbViewerTheme.of(context).primaryKeyColor
                       : col.isGeometry
-                          ? const Color(0xFF2E7D32)
+                          ? DbViewerTheme.of(context).geometryColor
                           : const Color(0xFF9E9E9E),
                 ),
                 const SizedBox(width: 5),
@@ -481,15 +488,16 @@ class _ColumnRowState extends State<_ColumnRow> {
                     const Color(0xFF5C6BC0)),
                 if (col.isGeometry && col.srid != null) ...[
                   const SizedBox(width: 3),
-                  _chip('EPSG:${col.srid}', const Color(0xFFE8F5E9),
-                      const Color(0xFF2E7D32)),
+                  _chip('EPSG:${col.srid}',
+                      DbViewerTheme.of(context).geometryColor.withValues(alpha: 0.12),
+                      DbViewerTheme.of(context).geometryColor),
                 ],
                 if (col.isGeometry && col.hasSpatialIndex) ...[
                   const SizedBox(width: 3),
                   Tooltip(
                     message: 'Spatial index',
                     child: Icon(Icons.bolt,
-                        size: 11, color: const Color(0xFFF57F17)),
+                        size: 11, color: DbViewerTheme.of(context).primaryKeyColor),
                   ),
                 ],
               ],
@@ -568,7 +576,9 @@ class _IndexRow extends StatelessWidget {
           Icon(
             isGist ? Icons.map : Icons.sort,
             size: 11,
-            color: isGist ? const Color(0xFF2E7D32) : const Color(0xFF78909C),
+            color: isGist
+                ? DbViewerTheme.of(context).geometryColor
+                : const Color(0xFF78909C),
           ),
           const SizedBox(width: 4),
           Expanded(
@@ -664,7 +674,7 @@ class _DragChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
-          color: const Color(0xFF1565C0),
+          color: DbViewerTheme.of(context).primaryColor,
           borderRadius: BorderRadius.circular(4),
           boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
         ),
