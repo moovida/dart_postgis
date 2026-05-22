@@ -8,7 +8,8 @@ import 'results_panel.dart';
 import 'sql_editor_panel.dart';
 
 class DbViewerPage extends StatefulWidget {
-  const DbViewerPage({super.key});
+  final String title;
+  const DbViewerPage({super.key, this.title = 'G-ANT DB Viewer'});
 
   @override
   State<DbViewerPage> createState() => _DbViewerPageState();
@@ -35,7 +36,7 @@ class _DbViewerPageState extends State<DbViewerPage> {
     return Scaffold(
       body: Column(
         children: [
-          _Toolbar(state: state),
+          _Toolbar(state: state, title: widget.title),
           const Divider(height: 1, color: Color(0xFFCCCCDD)),
           Expanded(
             child: MultiSplitViewTheme(
@@ -72,7 +73,8 @@ class _DbViewerPageState extends State<DbViewerPage> {
 
 class _Toolbar extends StatelessWidget {
   final AppState state;
-  const _Toolbar({required this.state});
+  final String title;
+  const _Toolbar({required this.state, required this.title});
 
   @override
   Widget build(BuildContext context) {
@@ -84,9 +86,9 @@ class _Toolbar extends StatelessWidget {
         children: [
           const Icon(Icons.storage, color: Colors.white, size: 20),
           const SizedBox(width: 8),
-          const Text(
-            'HydroGIS DB Viewer',
-            style: TextStyle(
+          Text(
+            title,
+            style: const TextStyle(
               color: Colors.white,
               fontWeight: FontWeight.bold,
               fontSize: 14,

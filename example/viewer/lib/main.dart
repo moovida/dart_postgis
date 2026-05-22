@@ -1,25 +1,18 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'src/app_state.dart';
-import 'src/db_viewer_page.dart';
+import 'src/db_viewer_widget.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(
-    ChangeNotifierProvider(
-      create: (_) => AppState(),
-      child: const HydroDbViewerApp(),
-    ),
-  );
+  runApp(const GantDbViewerApp());
 }
 
-class HydroDbViewerApp extends StatelessWidget {
-  const HydroDbViewerApp({super.key});
+class GantDbViewerApp extends StatelessWidget {
+  const GantDbViewerApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'HydroGIS DB Viewer',
+      title: 'G-ANT DB Viewer',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
@@ -53,7 +46,7 @@ class HydroDbViewerApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const DbViewerPage(),
+      home: const DbViewerWidget(),
     );
   }
 }
