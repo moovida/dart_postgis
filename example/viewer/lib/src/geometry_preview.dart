@@ -2,43 +2,156 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 /// Dialog that renders one or more WKT geometries on a shared canvas.
-class GeometryPreviewDialog extends StatelessWidget {
+/// Supports pan (drag), zoom (scroll wheel / +/- buttons) and window resize.
+class GeometryPreviewDialog extends StatefulWidget {
   final List<String> wkts;
   const GeometryPreviewDialog({super.key, required this.wkts});
 
-  String get _title {
-    if (wkts.length == 1) return wkts.first.split('(').first.trim().toUpperCase();
-    return '${wkts.length} geometries';
+  @override
+  State<GeometryPreviewDialog> createState() => _GeometryPreviewDialogState();
+}
+
+class _GeometryPreviewDialogState extends State<GeometryPreviewDialog> {
+  static const _minW = 320.0;
+  static const _minH = 280.0;
+  static const _handleSize = 8.0;
+
+  double _w = 560.0;
+  double _h = 560.0;
+  double _strokePx = 1.8;
+
+  final _controller = TransformationController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
+
+  String get _title {
+    if (widget.wkts.length == 1) {
+      return widget.wkts.first.split('(').first.trim().toUpperCase();
+    }
+    return '${widget.wkts.length} geometries';
+  }
+
+  void _zoom(double factor) {
+    final cx = _w / 2;
+    final cy = _h / 2;
+    final zoom = Matrix4.translationValues(cx, cy, 0)
+      ..multiply(Matrix4.diagonal3Values(factor, factor, 1))
+      ..multiply(Matrix4.translationValues(-cx, -cy, 0));
+    _controller.value = zoom * _controller.value;
+  }
+
+  void _resetView() => _controller.value = Matrix4.identity();
+
+  // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     return Dialog(
-      backgroundColor: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      insetPadding: const EdgeInsets.all(16),
       child: SizedBox(
-        width: 540,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+        width: _w,
+        height: _h,
+        child: Stack(
           children: [
-            _header(context),
-            _canvas(),
-            _wktBox(),
-            _footer(context),
+            // ── Main content ───────────────────────────────────────────────
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                boxShadow: const [
+                  BoxShadow(
+                      color: Colors.black38,
+                      blurRadius: 16,
+                      offset: Offset(0, 6))
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Column(
+                  children: [
+                    _header(context),
+                    Expanded(child: _canvas()),
+                    _wktBox(),
+                    _footer(context),
+                  ],
+                ),
+              ),
+            ),
+
+            // ── Resize: right edge ─────────────────────────────────────────
+            Positioned(
+              right: 0,
+              top: 24,
+              bottom: 24,
+              child: MouseRegion(
+                cursor: SystemMouseCursors.resizeLeftRight,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onHorizontalDragUpdate: (d) => setState(
+                      () => _w = (_w + d.delta.dx).clamp(_minW, 1600.0)),
+                  child: const SizedBox(width: _handleSize),
+                ),
+              ),
+            ),
+
+            // ── Resize: bottom edge ────────────────────────────────────────
+            Positioned(
+              bottom: 0,
+              left: 24,
+              right: 24,
+              child: MouseRegion(
+                cursor: SystemMouseCursors.resizeUpDown,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onVerticalDragUpdate: (d) => setState(
+                      () => _h = (_h + d.delta.dy).clamp(_minH, 1200.0)),
+                  child: const SizedBox(height: _handleSize),
+                ),
+              ),
+            ),
+
+            // ── Resize: bottom-right corner ────────────────────────────────
+            Positioned(
+              right: 0,
+              bottom: 0,
+              child: MouseRegion(
+                cursor: SystemMouseCursors.resizeUpLeftDownRight,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onPanUpdate: (d) => setState(() {
+                    _w = (_w + d.delta.dx).clamp(_minW, 1600.0);
+                    _h = (_h + d.delta.dy).clamp(_minH, 1200.0);
+                  }),
+                  child: Container(
+                    width: 20,
+                    height: 20,
+                    alignment: Alignment.bottomRight,
+                    padding: const EdgeInsets.only(right: 3, bottom: 3),
+                    child: const Icon(Icons.drag_indicator,
+                        size: 14, color: Color(0xFFCCCCDD)),
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
+  // ── Sections ──────────────────────────────────────────────────────────────
+
   Widget _header(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      decoration: const BoxDecoration(
-        color: Color(0xFF1565C0),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
-      ),
+      height: 44,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      color: const Color(0xFF1565C0),
       child: Row(
         children: [
           const Icon(Icons.place, color: Colors.white, size: 16),
@@ -68,30 +181,62 @@ class GeometryPreviewDialog extends StatelessWidget {
   }
 
   Widget _canvas() {
-    return Container(
-      height: 360,
-      color: const Color(0xFFF0F4FA),
-      child: CustomPaint(
-        painter: _GeomPainter(wkts),
-        child: const SizedBox.expand(),
-      ),
+    return LayoutBuilder(
+      builder: (_, constraints) {
+        final cw = constraints.maxWidth;
+        final ch = constraints.maxHeight;
+        return Stack(
+          children: [
+            InteractiveViewer(
+              transformationController: _controller,
+              minScale: 0.05,
+              maxScale: 200.0,
+              boundaryMargin: const EdgeInsets.all(double.infinity),
+              child: ListenableBuilder(
+                listenable: _controller,
+                builder: (_, _) {
+                  final invScale =
+                      1.0 / _controller.value.getMaxScaleOnAxis().clamp(0.001, 1e6);
+                  return SizedBox(
+                    width: cw,
+                    height: ch,
+                    child: CustomPaint(
+                      painter: _GeomPainter(widget.wkts,
+                          invScale: invScale, strokePx: _strokePx),
+                    ),
+                  );
+                },
+              ),
+            ),
+            Positioned(
+              right: 8,
+              bottom: 8,
+              child: Column(
+                children: [
+                  _ZoomButton(Icons.add, () => _zoom(1.4)),
+                  const SizedBox(height: 4),
+                  _ZoomButton(Icons.remove, () => _zoom(1 / 1.4)),
+                  const SizedBox(height: 4),
+                  _ZoomButton(Icons.fit_screen, _resetView),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
   Widget _wktBox() {
-    final text = wkts.join('\n');
     return Container(
       height: 90,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       color: const Color(0xFFEEF2FF),
       child: SingleChildScrollView(
         child: SelectableText(
-          text,
+          widget.wkts.join('\n'),
           style: const TextStyle(
-            fontSize: 11,
-            fontFamily: 'monospace',
-            color: Color(0xFF424242),
-          ),
+              fontSize: 11, fontFamily: 'monospace', color: Color(0xFF424242)),
         ),
       ),
     );
@@ -99,13 +244,33 @@ class GeometryPreviewDialog extends StatelessWidget {
 
   Widget _footer(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
         children: [
+          const Icon(Icons.line_weight, size: 14, color: Color(0xFF9E9E9E)),
+          const SizedBox(width: 2),
+          SizedBox(
+            width: 90,
+            child: SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                trackHeight: 2,
+                thumbShape:
+                    const RoundSliderThumbShape(enabledThumbRadius: 6),
+                overlayShape:
+                    const RoundSliderOverlayShape(overlayRadius: 10),
+              ),
+              child: Slider(
+                value: _strokePx,
+                min: 0.5,
+                max: 6.0,
+                onChanged: (v) => setState(() => _strokePx = v),
+              ),
+            ),
+          ),
+          const Spacer(),
           TextButton.icon(
             onPressed: () =>
-                Clipboard.setData(ClipboardData(text: wkts.join('\n'))),
+                Clipboard.setData(ClipboardData(text: widget.wkts.join('\n'))),
             icon: const Icon(Icons.copy, size: 14),
             label: const Text('Copy WKT', style: TextStyle(fontSize: 12)),
           ),
@@ -122,23 +287,52 @@ class GeometryPreviewDialog extends StatelessWidget {
   }
 }
 
-// ── Painter ──────────────────────────────────────────────────────────────────
+// ── Zoom button ───────────────────────────────────────────────────────────────
+
+class _ZoomButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onPressed;
+  const _ZoomButton(this.icon, this.onPressed);
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 28,
+      height: 28,
+      child: ElevatedButton(
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(
+          padding: EdgeInsets.zero,
+          backgroundColor: Colors.white,
+          foregroundColor: const Color(0xFF1565C0),
+          elevation: 2,
+          shape: const CircleBorder(),
+        ),
+        child: Icon(icon, size: 15),
+      ),
+    );
+  }
+}
+
+// ── Geometry painter ──────────────────────────────────────────────────────────
 
 class _GeomPainter extends CustomPainter {
   final List<String> wkts;
-  _GeomPainter(this.wkts);
+  final double invScale;
+  final double strokePx;
+  _GeomPainter(this.wkts, {this.invScale = 1.0, this.strokePx = 1.8});
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Collect all rings across all WKTs, tagged with their geometry type
     final allEntries = <({List<List<Offset>> rings, String type})>[];
     for (final wkt in wkts) {
       final rings = _extractRings(wkt);
-      if (rings.isNotEmpty) allEntries.add((rings: rings, type: wkt.toUpperCase()));
+      if (rings.isNotEmpty) {
+        allEntries.add((rings: rings, type: wkt.toUpperCase()));
+      }
     }
     if (allEntries.isEmpty) return;
 
-    // Combined bounding box
     var minX = double.infinity, minY = double.infinity;
     var maxX = double.negativeInfinity, maxY = double.negativeInfinity;
     for (final e in allEntries) {
@@ -181,7 +375,6 @@ class _GeomPainter extends CustomPainter {
           Offset(size.width, size.height * i / 6), gridPaint);
     }
 
-    // Draw each geometry
     for (final e in allEntries) {
       _drawGeom(canvas, e.rings, e.type, proj);
     }
@@ -192,13 +385,14 @@ class _GeomPainter extends CustomPainter {
     final isPoint = RegExp(r'^\s*MULTI?POINT').hasMatch(type);
     final isPoly = type.contains('POLYGON');
 
+    final sw = strokePx * invScale;
     final fill = Paint()
       ..color = const Color(0x381565C0)
       ..style = PaintingStyle.fill;
     final stroke = Paint()
       ..color = const Color(0xFF1565C0)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.8
+      ..strokeWidth = sw
       ..strokeJoin = StrokeJoin.round
       ..strokeCap = StrokeCap.round;
     final dot = Paint()
@@ -206,10 +400,11 @@ class _GeomPainter extends CustomPainter {
       ..style = PaintingStyle.fill;
 
     if (isPoint) {
+      final r = 5.0 * invScale;
       for (final ring in rings) {
         for (final p in ring) {
-          canvas.drawCircle(proj(p), 5, dot);
-          canvas.drawCircle(proj(p), 5, stroke..strokeWidth = 1.2);
+          canvas.drawCircle(proj(p), r, dot);
+          canvas.drawCircle(proj(p), r, stroke..strokeWidth = sw * 0.67);
         }
       }
     } else if (isPoly) {
@@ -225,7 +420,7 @@ class _GeomPainter extends CustomPainter {
         path.close();
       }
       canvas.drawPath(path, fill);
-      canvas.drawPath(path, stroke..strokeWidth = 1.8);
+      canvas.drawPath(path, stroke..strokeWidth = sw);
     } else {
       for (final ring in rings) {
         if (ring.isEmpty) continue;
@@ -237,9 +432,10 @@ class _GeomPainter extends CustomPainter {
         }
         canvas.drawPath(path, stroke);
       }
+      final dotR = 2.5 * invScale;
       for (final ring in rings) {
         for (final p in ring) {
-          canvas.drawCircle(proj(p), 2.5, dot);
+          canvas.drawCircle(proj(p), dotR, dot);
         }
       }
     }
@@ -264,5 +460,6 @@ class _GeomPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_GeomPainter old) => old.wkts != wkts;
+  bool shouldRepaint(_GeomPainter old) =>
+      old.wkts != wkts || old.invScale != invScale || old.strokePx != strokePx;
 }

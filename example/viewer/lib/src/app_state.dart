@@ -202,6 +202,107 @@ class AppState extends ChangeNotifier {
     );
   }
 
+  // ── Table context-menu actions ─────────────────────────────────────────────
+
+  /// Returns the row count for [table] without touching the results panel.
+  Future<int?> countTableRecords(TableItem table) async {
+    if (_db == null) return null;
+    try {
+      final res = await _db!
+          .select('SELECT count(*) AS c FROM ${table.fullName}');
+      if (res == null || res.length == 0) return 0;
+      return (res.first.get('c') as num?)?.toInt() ?? 0;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Puts a SELECT * template in the active editor (not run).
+  void insertSelectStatement(TableItem table) {
+    _setEditorText('SELECT *\nFROM ${table.fullName};');
+  }
+
+  /// Puts an INSERT template with all columns in the active editor (not run).
+  Future<void> insertInsertStatement(TableItem table) async {
+    if (_db == null) return;
+    await loadTableColumns(table);
+    final cols = table.columns;
+    if (cols == null || cols.isEmpty) {
+      _setEditorText('INSERT INTO ${table.fullName}\nVALUES ();');
+      return;
+    }
+    final colNames = cols.map((c) => '  ${c.name}').join(',\n');
+    final values = cols.map((c) {
+      if (c.isPrimaryKey) return '  DEFAULT                -- ${c.name} ${c.type}';
+      if (c.isGeometry) {
+        final srid = c.srid != null ? ', ${c.srid}' : '';
+        return "  ST_GeomFromText('${c.geometryType ?? 'GEOMETRY'}()'$srid)  -- ${c.name}";
+      }
+      return '  null                   -- ${c.name} ${c.type}';
+    }).join(',\n');
+    _setEditorText(
+        'INSERT INTO ${table.fullName} (\n$colNames\n)\nVALUES (\n$values\n);');
+  }
+
+  /// Puts a SELECT that produces INSERT statements in the active editor (not run).
+  Future<void> insertGenerateInserts(TableItem table) async {
+    if (_db == null) return;
+    await loadTableColumns(table);
+    final cols = table.columns;
+    if (cols == null || cols.isEmpty) return;
+    final colNames = cols.map((c) => c.name).join(', ');
+    final valParts = cols.map((c) {
+      if (c.isGeometry) {
+        final srid = c.srid != null ? ', ${c.srid}' : '';
+        return "  COALESCE('ST_GeomFromText(' || quote_literal(ST_AsText(${c.name})) || '$srid)', 'NULL')";
+      }
+      return '  quote_nullable(${c.name}::text)';
+    });
+    final valExpr = valParts.join(" ||\n  ', ' ||\n");
+    _setEditorText("SELECT\n"
+        "  'INSERT INTO ${table.fullName} ($colNames) VALUES (' ||\n"
+        "$valExpr ||\n"
+        "  ')'\n"
+        "FROM ${table.fullName};");
+  }
+
+  /// Puts a DROP TABLE statement in the active editor (not run).
+  void insertDropStatement(TableItem table) {
+    _setEditorText('DROP TABLE IF EXISTS ${table.fullName};');
+  }
+
+  /// Fetches up to [limit] geometry WKTs from the table's geometry column.
+  Future<List<String>> getTableGeometryWkts(TableItem table,
+      {int limit = 500}) async {
+    if (_db == null) return [];
+    await loadTableColumns(table);
+    String? geomColName;
+    for (final c in table.columns ?? []) {
+      if (c.isGeometry) {
+        geomColName = c.name;
+        break;
+      }
+    }
+    if (geomColName == null) return [];
+    final res = await _db!.select(
+      'SELECT ST_AsText($geomColName) AS wkt FROM ${table.fullName} '
+      'WHERE $geomColName IS NOT NULL LIMIT $limit',
+    );
+    final wkts = <String>[];
+    res?.forEach((dynamic row) {
+      final w = row.get('wkt') as String?;
+      if (w != null) wkts.add(w);
+    });
+    return wkts;
+  }
+
+  void _setEditorText(String sql) {
+    final ctrl = editors[activeEditorIndex];
+    ctrl.text = sql;
+    ctrl.selection = TextSelection.collapsed(offset: sql.length);
+    notifyListeners();
+  }
+
   Future<void> refreshTree() async {
     if (_db == null) return;
     _status = 'Refreshing tree…';

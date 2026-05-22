@@ -310,18 +310,37 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
                       borderRadius: BorderRadius.circular(4),
                       border: Border.all(color: const Color(0xFFEF9A9A)),
                     ),
-                    child: Row(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Icon(Icons.error_outline,
-                            color: Color(0xFFB71C1C), size: 16),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            _error!,
-                            style: const TextStyle(
-                                color: Color(0xFFB71C1C), fontSize: 12),
-                          ),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(Icons.error_outline,
+                                color: Color(0xFFB71C1C), size: 16),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _cleanError(_error!),
+                                style: const TextStyle(
+                                    color: Color(0xFFB71C1C), fontSize: 12),
+                              ),
+                            ),
+                          ],
                         ),
+                        if (_errorHint(_error!) != null) ...[
+                          const SizedBox(height: 6),
+                          Padding(
+                            padding: const EdgeInsets.only(left: 24),
+                            child: Text(
+                              _errorHint(_error!)!,
+                              style: const TextStyle(
+                                  color: Color(0xFFB71C1C),
+                                  fontSize: 11,
+                                  fontStyle: FontStyle.italic),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -361,6 +380,34 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
         ),
       ),
     );
+  }
+
+  /// Strips verbose prefix: "PostgreSQLSeverity.fatal 28P01: foo" → "foo (28P01)"
+  static String _cleanError(String raw) {
+    final m = RegExp(r'PostgreSQLSeverity\.\w+ (\w+): (.+)', dotAll: true)
+        .firstMatch(raw);
+    if (m != null) return '${m.group(2)} [${m.group(1)}]';
+    return raw;
+  }
+
+  static String? _errorHint(String raw) {
+    final lower = raw.toLowerCase();
+    if (lower.contains('28p01') || lower.contains('password authentication')) {
+      return 'Wrong password, or the server uses SCRAM-SHA-256 with TLS channel '
+          'binding (scram-sha-256-plus) which the client library does not support. '
+          'Server-side fix: add channel_binding = disable to postgresql.conf.';
+    }
+    if (lower.contains('ssl') || lower.contains('certificate')) {
+      return 'SSL handshake failed. Try disabling "Use SSL" if the server '
+          'does not require encrypted connections.';
+    }
+    if (lower.contains('timeout') || lower.contains('connection refused')) {
+      return 'Cannot reach the server. Check the host, port, and firewall rules.';
+    }
+    if (lower.contains('28000') || lower.contains('not permitted')) {
+      return 'User not allowed from this host — check pg_hba.conf on the server.';
+    }
+    return null;
   }
 }
 

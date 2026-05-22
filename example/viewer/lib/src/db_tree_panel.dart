@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'app_state.dart';
+import 'geometry_preview.dart';
 
 class DbTreePanel extends StatelessWidget {
   const DbTreePanel({super.key});
@@ -165,6 +166,8 @@ class _TableNodeState extends State<_TableNode> {
   bool _expanded = false;
   bool _loadingColumns = false;
   bool _runningQuery = false;
+  bool _hovered = false;
+  bool _menuOpen = false;
 
   Future<void> _toggleExpand() async {
     if (!_expanded && widget.table.columns == null) {
@@ -213,63 +216,157 @@ class _TableNodeState extends State<_TableNode> {
 
   Widget _tableRow(bool hasGeom, bool busy) {
     final table = widget.table;
-    return Padding(
-      padding: EdgeInsets.only(left: widget.indent, right: 0),
-      child: Row(
-        children: [
-          Expanded(
-            child: InkWell(
-              onTap: _runQuery,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 3),
-                child: Row(
-                  children: [
-                    Icon(
-                      hasGeom ? Icons.map : Icons.table_chart,
-                      size: 14,
-                      color: hasGeom
-                          ? const Color(0xFF2E7D32)
-                          : const Color(0xFF1565C0),
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        table.name,
-                        style: const TextStyle(
-                            fontSize: 12, color: Color(0xFF424242)),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          SizedBox(
-            width: 28,
-            child: busy
-                ? const Center(
-                    child: SizedBox(
-                      width: 12,
-                      height: 12,
-                      child: CircularProgressIndicator(strokeWidth: 1.5),
-                    ),
-                  )
-                : InkWell(
-                    onTap: _toggleExpand,
+    final bg = _menuOpen
+        ? const Color(0xFFD0DEF5)
+        : _hovered
+            ? const Color(0xFFE8EFF7)
+            : Colors.transparent;
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        onSecondaryTapUp: (e) => _showContextMenu(e.globalPosition),
+        child: Container(
+          color: bg,
+          child: Padding(
+            padding: EdgeInsets.only(left: widget.indent, right: 0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: InkWell(
+                    onTap: _runQuery,
+                    hoverColor: Colors.transparent,
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 4, vertical: 3),
-                      child: Icon(
-                        _expanded ? Icons.expand_less : Icons.expand_more,
-                        size: 13,
-                        color: const Color(0xFF9E9E9E),
+                      padding: const EdgeInsets.symmetric(vertical: 3),
+                      child: Row(
+                        children: [
+                          Icon(
+                            hasGeom ? Icons.map : Icons.table_chart,
+                            size: 14,
+                            color: hasGeom
+                                ? const Color(0xFF2E7D32)
+                                : const Color(0xFF1565C0),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              table.name,
+                              style: const TextStyle(
+                                  fontSize: 12, color: Color(0xFF424242)),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
+                ),
+                SizedBox(
+                  width: 28,
+                  child: busy
+                      ? const Center(
+                          child: SizedBox(
+                            width: 12,
+                            height: 12,
+                            child: CircularProgressIndicator(strokeWidth: 1.5),
+                          ),
+                        )
+                      : InkWell(
+                          onTap: _toggleExpand,
+                          hoverColor: Colors.transparent,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 4, vertical: 3),
+                            child: Icon(
+                              _expanded ? Icons.expand_less : Icons.expand_more,
+                              size: 13,
+                              color: const Color(0xFF9E9E9E),
+                            ),
+                          ),
+                        ),
+                ),
+              ],
+            ),
           ),
-        ],
+        ),
       ),
+    );
+  }
+
+  // ── Right-click context menu ───────────────────────────────────────────────
+
+  Future<void> _showContextMenu(Offset pos) async {
+    final table = widget.table;
+    final hasGeom = table.isGeometry;
+    setState(() => _menuOpen = true);
+    final selected = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(pos.dx, pos.dy, pos.dx + 1, pos.dy + 1),
+      constraints: const BoxConstraints(minWidth: 310),
+      items: [
+        _menuItem('count', Icons.tag, 'Count table records'),
+        const PopupMenuDivider(height: 1),
+        _menuItem('select', Icons.table_rows_outlined, 'Select statement'),
+        _menuItem('insert', Icons.add_box_outlined, 'Insert statement'),
+        _menuItem('gen_inserts', Icons.format_list_bulleted, 'Generate insert sql statements'),
+        const PopupMenuDivider(height: 1),
+        _menuItem('drop', Icons.delete_outline, 'Drop table statement',
+            color: const Color(0xFFB71C1C)),
+        if (hasGeom) ...[
+          const PopupMenuDivider(height: 1),
+          _menuItem('view_geoms', Icons.map_outlined, 'Quick view table geometries',
+              color: const Color(0xFF2E7D32)),
+        ],
+      ],
+    );
+    if (!mounted) return;
+    setState(() => _menuOpen = false);
+    final state = context.read<AppState>();
+    switch (selected) {
+      case 'count':
+        final count = await state.countTableRecords(table);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(count != null
+              ? '${table.fullName}: $count record${count == 1 ? '' : 's'}'
+              : 'Could not count records for ${table.fullName}'),
+          duration: const Duration(seconds: 4),
+        ));
+      case 'select':
+        state.insertSelectStatement(table);
+      case 'insert':
+        await state.insertInsertStatement(table);
+      case 'gen_inserts':
+        await state.insertGenerateInserts(table);
+      case 'drop':
+        state.insertDropStatement(table);
+      case 'view_geoms':
+        final wkts = await state.getTableGeometryWkts(table);
+        if (!mounted) return;
+        if (wkts.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No geometries found in this table.')),
+          );
+          return;
+        }
+        showDialog(
+          context: context,
+          builder: (_) => GeometryPreviewDialog(wkts: wkts),
+        );
+    }
+  }
+
+  PopupMenuItem<String> _menuItem(String value, IconData icon, String label,
+      {Color color = const Color(0xFF424242)}) {
+    return PopupMenuItem(
+      value: value,
+      height: 36,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      child: Row(children: [
+        Icon(icon, size: 15, color: color),
+        const SizedBox(width: 10),
+        Text(label, style: TextStyle(fontSize: 13, color: color)),
+      ]),
     );
   }
 }
