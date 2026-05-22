@@ -7,7 +7,9 @@ class ColumnItem {
   final String type;
   final bool isPrimaryKey;
   final bool isGeometry;
-  final String? geometryType; // e.g. "MULTILINESTRING", "POINT"
+  final String? geometryType;
+  final int? srid;
+  final bool hasSpatialIndex;
 
   const ColumnItem({
     required this.name,
@@ -15,6 +17,36 @@ class ColumnItem {
     required this.isPrimaryKey,
     this.isGeometry = false,
     this.geometryType,
+    this.srid,
+    this.hasSpatialIndex = false,
+  });
+}
+
+class IndexInfo {
+  final String name;
+  final String type; // btree, gist, gin, hash, …
+  final String columns;
+  final bool isUnique;
+
+  const IndexInfo({
+    required this.name,
+    required this.type,
+    required this.columns,
+    this.isUnique = false,
+  });
+}
+
+class ForeignKeyInfo {
+  final String column;
+  final String refSchema;
+  final String refTable;
+  final String refColumn;
+
+  const ForeignKeyInfo({
+    required this.column,
+    required this.refSchema,
+    required this.refTable,
+    required this.refColumn,
   });
 }
 
@@ -23,6 +55,8 @@ class TableItem {
   final String schema;
   bool isGeometry;
   List<ColumnItem>? columns;
+  List<IndexInfo>? indexes;
+  List<ForeignKeyInfo>? foreignKeys;
 
   TableItem({required this.name, required this.schema, this.isGeometry = false});
 
@@ -58,6 +92,15 @@ class AppState extends ChangeNotifier {
   String _status = 'Not connected.';
   String _connectionLabel = '';
 
+  // Stored for database switching
+  String? _host;
+  int? _port;
+  String? _dbName;
+  String? _user;
+  String? _pwd;
+  bool _useSSL = true;
+  bool _allowClearTextPassword = false;
+
   List<SchemaItem> schemas = [];
   ViewerResult? queryResult;
   bool isExecuting = false;
@@ -73,6 +116,7 @@ class AppState extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String get status => _status;
   String get connectionLabel => _connectionLabel;
+  String get currentDbName => _dbName ?? '';
 
   Future<void> connect({
     required String host,
@@ -96,6 +140,10 @@ class AppState extends ChangeNotifier {
       _db = db;
       _isConnected = true;
       _connectionLabel = '$host:$port/$dbName';
+      // Store params for database switching
+      _host = host; _port = port; _dbName = dbName;
+      _user = user; _pwd = pwd;
+      _useSSL = useSSL; _allowClearTextPassword = allowClearTextPassword;
       await _loadTree();
       _status =
           'Connected to $_connectionLabel · PostGIS ${db.version.split(" ").first}';
@@ -119,6 +167,39 @@ class AppState extends ChangeNotifier {
     queryResult = null;
     _status = 'Disconnected.';
     notifyListeners();
+  }
+
+  Future<List<String>> listDatabases() async {
+    if (_db == null) return [];
+    final res = await _db!.select(
+      "SELECT datname FROM pg_database "
+      "WHERE datistemplate = false AND datallowconn = true "
+      "ORDER BY datname",
+    );
+    final dbs = <String>[];
+    res?.forEach((dynamic row) {
+      final name = row.get('datname');
+      if (name != null) dbs.add(name as String);
+    });
+    return dbs;
+  }
+
+  Future<void> switchDatabase(String newDbName) async {
+    if (_host == null || newDbName == _dbName) return;
+    _db?.close();
+    _db = null;
+    _isConnected = false;
+    schemas = [];
+    queryResult = null;
+    await connect(
+      host: _host!,
+      port: _port!,
+      dbName: newDbName,
+      user: _user!,
+      pwd: _pwd!,
+      useSSL: _useSSL,
+      allowClearTextPassword: _allowClearTextPassword,
+    );
   }
 
   Future<void> refreshTree() async {
@@ -166,14 +247,21 @@ class AppState extends ChangeNotifier {
 
     final cols = await _db!.getTableColumns(table.tableName);
     final pk = await _db!.getPrimaryKey(table.tableName);
+    final schema = table.schema;
+    final tname = table.name;
 
+    // ── Geometry info ──────────────────────────────────────────────────────
     String? geomColName;
     String? geomTypeName;
+    int? geomSrid;
+    bool hasSpatialIndex = false;
     if (table.isGeometry) {
       final gc = await _db!.getGeometryColumnsForTable(table.tableName);
       if (gc != null) {
         geomColName = gc.geometryColumnName;
         geomTypeName = gc.geometryType.typeName;
+        geomSrid = gc.srid;
+        hasSpatialIndex = gc.isSpatialIndexEnabled != 0;
       }
     }
 
@@ -186,8 +274,65 @@ class AppState extends ChangeNotifier {
         isPrimaryKey: colName == pk,
         isGeometry: isGeomCol,
         geometryType: isGeomCol ? geomTypeName : null,
+        srid: isGeomCol ? geomSrid : null,
+        hasSpatialIndex: isGeomCol && hasSpatialIndex,
       );
     }).toList();
+
+    // ── Indexes (excluding PK) ─────────────────────────────────────────────
+    final idxRes = await _db!.select("""
+      SELECT i.relname AS iname, pg_get_indexdef(ix.indexrelid) AS idef,
+             ix.indisunique AS is_unique
+      FROM pg_index ix
+      JOIN pg_class t  ON t.oid  = ix.indrelid
+      JOIN pg_class i  ON i.oid  = ix.indexrelid
+      JOIN pg_namespace n ON t.relnamespace = n.oid
+      WHERE t.relname = '$tname' AND n.nspname = '$schema'
+        AND NOT ix.indisprimary
+      ORDER BY i.relname
+    """);
+    final idxList = <IndexInfo>[];
+    idxRes?.forEach((dynamic row) {
+      final def = (row.get('idef') as String? ?? '');
+      final typeMatch = RegExp(r'USING (\w+)').firstMatch(def);
+      final colMatch = RegExp(r'\(([^)]+)\)\s*$').firstMatch(def);
+      idxList.add(IndexInfo(
+        name: row.get('iname') as String? ?? '',
+        type: typeMatch?.group(1) ?? 'btree',
+        columns: colMatch?.group(1) ?? '',
+        isUnique: row.get('is_unique') as bool? ?? false,
+      ));
+    });
+    table.indexes = idxList;
+
+    // ── Foreign keys ───────────────────────────────────────────────────────
+    final fkRes = await _db!.select("""
+      SELECT
+        a.attname  AS col,
+        nf.nspname AS ref_schema,
+        cf.relname AS ref_table,
+        af.attname AS ref_col
+      FROM pg_constraint c
+      JOIN pg_class     ct ON ct.oid = c.conrelid
+      JOIN pg_namespace nt ON nt.oid = ct.relnamespace
+      JOIN pg_attribute  a ON  a.attrelid = ct.oid AND a.attnum = ANY(c.conkey)
+      JOIN pg_class     cf ON cf.oid = c.confrelid
+      JOIN pg_namespace nf ON nf.oid = cf.relnamespace
+      JOIN pg_attribute af ON af.attrelid = cf.oid AND af.attnum = ANY(c.confkey)
+      WHERE c.contype = 'f'
+        AND ct.relname = '$tname' AND nt.nspname = '$schema'
+      ORDER BY a.attname
+    """);
+    final fkList = <ForeignKeyInfo>[];
+    fkRes?.forEach((dynamic row) {
+      fkList.add(ForeignKeyInfo(
+        column: row.get('col') as String? ?? '',
+        refSchema: row.get('ref_schema') as String? ?? '',
+        refTable: row.get('ref_table') as String? ?? '',
+        refColumn: row.get('ref_col') as String? ?? '',
+      ));
+    });
+    table.foreignKeys = fkList;
 
     notifyListeners();
   }

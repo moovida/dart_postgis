@@ -197,9 +197,16 @@ class _TableNodeState extends State<_TableNode> {
           childWhenDragging: Opacity(opacity: 0.4, child: _tableRow(hasGeom, busy)),
           child: _tableRow(hasGeom, busy),
         ),
-        if (_expanded && table.columns != null)
+        if (_expanded && table.columns != null) ...[
           ...table.columns!
               .map((c) => _ColumnRow(col: c, indent: widget.indent + 16)),
+          if (table.indexes != null && table.indexes!.isNotEmpty)
+            _SectionHeader(label: 'Indexes', indent: widget.indent + 16),
+          ...?table.indexes?.map((idx) => _IndexRow(idx: idx, indent: widget.indent + 24)),
+          if (table.foreignKeys != null && table.foreignKeys!.isNotEmpty)
+            _SectionHeader(label: 'Foreign keys', indent: widget.indent + 16),
+          ...?table.foreignKeys?.map((fk) => _FkRow(fk: fk, tableSchema: table.schema, indent: widget.indent + 24)),
+        ],
       ],
     );
   }
@@ -299,20 +306,18 @@ class _ColumnRow extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-            decoration: BoxDecoration(
-              color: const Color(0xFFEEF2FF),
-              borderRadius: BorderRadius.circular(3),
+          _chip(_shortType(col.type), const Color(0xFFEEF2FF), const Color(0xFF5C6BC0)),
+          if (col.isGeometry && col.srid != null) ...[
+            const SizedBox(width: 3),
+            _chip('EPSG:${col.srid}', const Color(0xFFE8F5E9), const Color(0xFF2E7D32)),
+          ],
+          if (col.isGeometry && col.hasSpatialIndex) ...[
+            const SizedBox(width: 3),
+            Tooltip(
+              message: 'Spatial index',
+              child: Icon(Icons.bolt, size: 11, color: const Color(0xFFF57F17)),
             ),
-            child: Text(
-              _shortType(col.type),
-              style: const TextStyle(
-                  fontSize: 10,
-                  color: Color(0xFF5C6BC0),
-                  fontFamily: 'monospace'),
-            ),
-          ),
+          ],
         ],
       ),
     );
@@ -324,6 +329,16 @@ class _ColumnRow extends StatelessWidget {
     );
   }
 
+  Widget _chip(String label, Color bg, Color fg) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+      decoration:
+          BoxDecoration(color: bg, borderRadius: BorderRadius.circular(3)),
+      child: Text(label,
+          style: TextStyle(fontSize: 10, color: fg, fontFamily: 'monospace')),
+    );
+  }
+
   String _shortType(String type) {
     const abbrev = {
       'character varying': 'varchar',
@@ -332,6 +347,131 @@ class _ColumnRow extends StatelessWidget {
       'timestamp with time zone': 'timestamptz',
     };
     return abbrev[type] ?? type;
+  }
+}
+
+// ── Section header (Indexes / Foreign keys) ───────────────────────────────────
+
+class _SectionHeader extends StatelessWidget {
+  final String label;
+  final double indent;
+  const _SectionHeader({required this.label, required this.indent});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(left: indent, right: 8, top: 4, bottom: 1),
+      child: Text(
+        label.toUpperCase(),
+        style: const TextStyle(
+            fontSize: 9,
+            color: Color(0xFFAAAAAA),
+            letterSpacing: 0.8,
+            fontWeight: FontWeight.w600),
+      ),
+    );
+  }
+}
+
+// ── Index row ─────────────────────────────────────────────────────────────────
+
+class _IndexRow extends StatelessWidget {
+  final IndexInfo idx;
+  final double indent;
+  const _IndexRow({required this.idx, required this.indent});
+
+  @override
+  Widget build(BuildContext context) {
+    final isGist = idx.type.toLowerCase() == 'gist';
+    return Padding(
+      padding: EdgeInsets.only(left: indent, right: 8, top: 1, bottom: 1),
+      child: Row(
+        children: [
+          Icon(
+            isGist ? Icons.map : Icons.sort,
+            size: 11,
+            color: isGist ? const Color(0xFF2E7D32) : const Color(0xFF78909C),
+          ),
+          const SizedBox(width: 4),
+          Expanded(
+            child: Text(
+              idx.name,
+              style: const TextStyle(fontSize: 11, color: Color(0xFF616161)),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (idx.isUnique)
+            const Tooltip(
+              message: 'Unique',
+              child: Icon(Icons.verified_outlined,
+                  size: 11, color: Color(0xFF7B61FF)),
+            ),
+          const SizedBox(width: 3),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF5F5F5),
+              borderRadius: BorderRadius.circular(3),
+            ),
+            child: Text(
+              idx.columns,
+              style: const TextStyle(
+                  fontSize: 9,
+                  color: Color(0xFF9E9E9E),
+                  fontFamily: 'monospace'),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Foreign key row ───────────────────────────────────────────────────────────
+
+class _FkRow extends StatelessWidget {
+  final ForeignKeyInfo fk;
+  final String tableSchema;
+  final double indent;
+  const _FkRow(
+      {required this.fk, required this.tableSchema, required this.indent});
+
+  @override
+  Widget build(BuildContext context) {
+    final ref = fk.refSchema == tableSchema
+        ? '${fk.refTable}(${fk.refColumn})'
+        : '${fk.refSchema}.${fk.refTable}(${fk.refColumn})';
+    return Padding(
+      padding: EdgeInsets.only(left: indent, right: 8, top: 1, bottom: 1),
+      child: Row(
+        children: [
+          const Icon(Icons.call_made, size: 11, color: Color(0xFF5C6BC0)),
+          const SizedBox(width: 4),
+          Text(
+            fk.column,
+            style: const TextStyle(
+                fontSize: 11,
+                color: Color(0xFF616161),
+                fontFamily: 'monospace'),
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 4),
+            child: Icon(Icons.arrow_forward, size: 10, color: Color(0xFFBBBBCC)),
+          ),
+          Expanded(
+            child: Text(
+              ref,
+              style: const TextStyle(
+                  fontSize: 11,
+                  color: Color(0xFF5C6BC0),
+                  fontFamily: 'monospace'),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

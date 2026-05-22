@@ -1,7 +1,10 @@
+import 'dart:math' show min, max;
 import 'package:data_table_2/data_table_2.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'app_state.dart';
+import 'geometry_preview.dart';
 import 'wkb_to_wkt.dart' show wkbToWkt;
 
 class ResultsPanel extends StatelessWidget {
@@ -10,7 +13,6 @@ class ResultsPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
-
     return Container(
       color: Colors.white,
       child: Column(
@@ -24,10 +26,11 @@ class ResultsPanel extends StatelessWidget {
   }
 }
 
+// ── Header ────────────────────────────────────────────────────────────────────
+
 class _PanelHeader extends StatelessWidget {
   final ViewerResult? result;
   final bool executing;
-
   const _PanelHeader({required this.result, required this.executing});
 
   @override
@@ -40,20 +43,17 @@ class _PanelHeader extends StatelessWidget {
         children: [
           const Icon(Icons.table_rows, size: 14, color: Color(0xFF1565C0)),
           const SizedBox(width: 6),
-          const Text(
-            'Results',
-            style: TextStyle(
-                fontSize: 12,
-                color: Color(0xFF424242),
-                fontWeight: FontWeight.w500),
-          ),
+          const Text('Results',
+              style: TextStyle(
+                  fontSize: 12,
+                  color: Color(0xFF424242),
+                  fontWeight: FontWeight.w500)),
           if (executing) ...[
             const SizedBox(width: 10),
             const SizedBox(
-              width: 12,
-              height: 12,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
+                width: 12,
+                height: 12,
+                child: CircularProgressIndicator(strokeWidth: 2)),
             const SizedBox(width: 6),
             const Text('Executing…',
                 style: TextStyle(fontSize: 11, color: Color(0xFF616161))),
@@ -86,23 +86,57 @@ class _PanelHeader extends StatelessWidget {
   }
 }
 
-class _ResultsBody extends StatelessWidget {
-  final ViewerResult? result;
+// ── Body ──────────────────────────────────────────────────────────────────────
 
+class _ResultsBody extends StatefulWidget {
+  final ViewerResult? result;
   const _ResultsBody({required this.result});
 
   @override
+  State<_ResultsBody> createState() => _ResultsBodyState();
+}
+
+class _ResultsBodyState extends State<_ResultsBody> {
+  static const _defaultColW = 150.0;
+  static const _minColW = 40.0;
+  static const _hMargin = 8.0;
+
+  List<double> _colWidths = [];
+  List<String> _lastColumns = [];
+
+  // Multi-cell selection: (rowIndex, colIndex)
+  final Set<(int, int)> _selected = {};
+  (int, int)? _lastTapped;
+
+  @override
+  void didUpdateWidget(_ResultsBody old) {
+    super.didUpdateWidget(old);
+    final cols = widget.result?.columns ?? [];
+    if (cols.length != _lastColumns.length ||
+        cols.join('\x00') != _lastColumns.join('\x00')) {
+      _initWidths(cols);
+    }
+  }
+
+  void _initWidths(List<String> cols) {
+    _lastColumns = List.of(cols);
+    _colWidths = List.filled(cols.length, _defaultColW);
+    _selected.clear();
+    _lastTapped = null;
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final result = widget.result;
+
     if (result == null) {
       return const Center(
-        child: Text(
-          'Run a query to see results here.',
-          style: TextStyle(color: Color(0xFFBBBBCC), fontSize: 12),
-        ),
+        child: Text('Run a query to see results here.',
+            style: TextStyle(color: Color(0xFFBBBBCC), fontSize: 12)),
       );
     }
 
-    if (result!.isError) {
+    if (result.isError) {
       return Padding(
         padding: const EdgeInsets.all(16),
         child: Container(
@@ -113,80 +147,256 @@ class _ResultsBody extends StatelessWidget {
             border: Border.all(color: const Color(0xFFEF9A9A)),
           ),
           child: SelectableText(
-            result!.rows.isNotEmpty ? result!.rows.first.first.toString() : '',
+            result.rows.isNotEmpty
+                ? result.rows.first.first.toString()
+                : '',
             style: const TextStyle(
-              color: Color(0xFFB71C1C),
-              fontFamily: 'monospace',
-              fontSize: 12,
-            ),
+                color: Color(0xFFB71C1C),
+                fontFamily: 'monospace',
+                fontSize: 12),
           ),
         ),
       );
     }
 
-    if (result!.columns.isEmpty) {
+    if (result.columns.isEmpty) {
       return const Center(
         child: Text('Query executed successfully.',
             style: TextStyle(color: Color(0xFF2E7D32), fontSize: 12)),
       );
     }
 
-    final columns = result!.columns;
-    final rows = result!.rows;
+    final columns = result.columns;
+    final rows = result.rows;
+    if (_colWidths.length != columns.length) _initWidths(columns);
 
     return DataTable2(
-      columnSpacing: 12,
-      horizontalMargin: 10,
-      minWidth: columns.length * 140.0,
+      columnSpacing: 0,
+      horizontalMargin: _hMargin,
+      // Must exceed sum(fixedWidths) + 2*horizontalMargin for DataTable2 assertion
+      minWidth: _colWidths.fold<double>(0.0, (s, w) => s + w) + 2 * _hMargin + 1,
       headingRowHeight: 32,
       dataRowHeight: 28,
       headingRowColor: WidgetStateProperty.all(const Color(0xFFEEF2FF)),
-      border: TableBorder(
-        horizontalInside:
-            BorderSide(color: const Color(0xFFDDE4F5), width: 0.5),
-        top: BorderSide(color: const Color(0xFFDDE4F5), width: 0.5),
-        bottom: BorderSide(color: const Color(0xFFDDE4F5), width: 0.5),
-      ),
-      columns: columns
-          .map(
-            (col) => DataColumn2(
-              label: Text(
-                col,
+      border: TableBorder.all(color: const Color(0xFFD4DCF0), width: 0.5),
+      columns: List.generate(columns.length, (i) => _buildColumn(i, columns[i])),
+      rows: List.generate(rows.length, (ri) {
+        return DataRow2(
+          cells: List.generate(columns.length, (ci) {
+            final raw = ci < rows[ri].length ? rows[ri][ci] : null;
+            final wkt = wkbToWkt(raw);
+            final full = wkt ?? raw?.toString();
+            final display = _format(raw, wkt);
+            // Tooltip only for truncated plain text (not geometry — dialog covers that)
+            final isTruncated =
+                wkt == null && full != null && display.length < full.length;
+            return DataCell(
+                _buildCell(context, ri, ci, wkt, display, full, isTruncated));
+          }),
+        );
+      }),
+    );
+  }
+
+  // ── Column header with resize handle ──────────────────────────────────────
+
+  DataColumn2 _buildColumn(int i, String name) {
+    return DataColumn2(
+      fixedWidth: _colWidths[i],
+      label: Row(
+        children: [
+          Expanded(
+            child: Text(name,
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   fontSize: 12,
                   color: Color(0xFF1565C0),
                   fontWeight: FontWeight.w600,
                   fontFamily: 'monospace',
+                )),
+          ),
+          MouseRegion(
+            cursor: SystemMouseCursors.resizeColumn,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onHorizontalDragUpdate: (d) => setState(
+                  () => _colWidths[i] = max(_minColW, _colWidths[i] + d.delta.dx)),
+              child: Container(
+                width: 7,
+                height: 32,
+                decoration: const BoxDecoration(
+                  border: Border(
+                      left: BorderSide(color: Color(0xFFCCCCDD), width: 1)),
                 ),
-                overflow: TextOverflow.ellipsis,
               ),
-              size: ColumnSize.M,
             ),
-          )
-          .toList(),
-      rows: rows.map((row) {
-        return DataRow2(
-          cells: List.generate(columns.length, (ci) {
-            final raw = ci < row.length ? row[ci] : null;
-            final wkt = wkbToWkt(raw);
-            final full = wkt ?? raw?.toString();
-            final display = _format(raw, wkt);
-            final needsTooltip =
-                full != null && display.length < full.length;
-            return DataCell(
-              needsTooltip
-                  ? Tooltip(
-                      message: full,
-                      textStyle: const TextStyle(
-                          fontSize: 11, fontFamily: 'monospace'),
-                      child: _CellText(display),
-                    )
-                  : _CellText(display),
-            );
-          }),
-        );
-      }).toList(),
+          ),
+        ],
+      ),
     );
+  }
+
+  // ── Cell ──────────────────────────────────────────────────────────────────
+
+  Widget _buildCell(BuildContext ctx, int ri, int ci, String? wkt,
+      String display, String? full, bool isTruncated) {
+    final isSelected = _selected.contains((ri, ci));
+
+    Widget cell = MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _onTap(ri, ci),
+        onSecondaryTapUp: (e) =>
+            _onRightClick(ctx, e.globalPosition, ri, ci, wkt, full),
+        child: Container(
+          width: double.infinity,
+          color: isSelected ? const Color(0x281565C0) : null,
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          alignment: Alignment.centerLeft,
+          child: Text(
+            display,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 12,
+              fontFamily: 'monospace',
+              color: display == 'NULL'
+                  ? const Color(0xFFBBBBCC)
+                  : const Color(0xFF212121),
+              fontStyle:
+                  display == 'NULL' ? FontStyle.italic : FontStyle.normal,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    // Tooltip only for truncated non-geometry text
+    if (isTruncated) {
+      cell = Tooltip(
+        message: full!,
+        textStyle: const TextStyle(fontSize: 11, fontFamily: 'monospace'),
+        child: cell,
+      );
+    }
+
+    return cell;
+  }
+
+  // ── Selection logic ───────────────────────────────────────────────────────
+
+  void _onTap(int ri, int ci) {
+    final ctrl = HardwareKeyboard.instance.isControlPressed ||
+        HardwareKeyboard.instance.isMetaPressed;
+    final shift = HardwareKeyboard.instance.isShiftPressed;
+    setState(() {
+      if (shift && _lastTapped != null) {
+        final r0 = min(_lastTapped!.$1, ri);
+        final r1 = max(_lastTapped!.$1, ri);
+        final c0 = min(_lastTapped!.$2, ci);
+        final c1 = max(_lastTapped!.$2, ci);
+        for (int r = r0; r <= r1; r++) {
+          for (int c = c0; c <= c1; c++) {
+            _selected.add((r, c));
+          }
+        }
+      } else if (ctrl) {
+        if (!_selected.remove((ri, ci))) _selected.add((ri, ci));
+        _lastTapped = (ri, ci);
+      } else {
+        _selected
+          ..clear()
+          ..add((ri, ci));
+        _lastTapped = (ri, ci);
+      }
+    });
+  }
+
+  void _onRightClick(BuildContext ctx, Offset pos, int ri, int ci, String? wkt,
+      String? full) {
+    if (!_selected.contains((ri, ci))) {
+      setState(() {
+        _selected
+          ..clear()
+          ..add((ri, ci));
+        _lastTapped = (ri, ci);
+      });
+    }
+
+    final n = _selected.length;
+    final copyLabel = n > 1 ? 'Copy $n cells' : 'Copy';
+    final toCopy = n > 1 ? _selectedAsTsv() : (full ?? '');
+
+    // Collect WKTs from all selected cells (may span multiple geometry columns)
+    final selectedWkts = _selectedGeomWkts();
+    final hasGeom = selectedWkts.isNotEmpty;
+    final geomLabel = selectedWkts.length > 1
+        ? 'View ${selectedWkts.length} geometries'
+        : 'View geometry';
+
+    showMenu<String>(
+      context: ctx,
+      position:
+          RelativeRect.fromLTRB(pos.dx, pos.dy, pos.dx + 1, pos.dy + 1),
+      items: [
+        PopupMenuItem(
+          value: 'copy',
+          height: 36,
+          child: Row(children: [
+            const Icon(Icons.copy, size: 14, color: Color(0xFF424242)),
+            const SizedBox(width: 8),
+            Text(copyLabel, style: const TextStyle(fontSize: 13)),
+          ]),
+        ),
+        if (hasGeom)
+          PopupMenuItem(
+            value: 'view',
+            height: 36,
+            child: Row(children: [
+              const Icon(Icons.place, size: 14, color: Color(0xFF2E7D32)),
+              const SizedBox(width: 8),
+              Text(geomLabel, style: const TextStyle(fontSize: 13)),
+            ]),
+          ),
+      ],
+    ).then((value) {
+      if (!mounted) return;
+      if (value == 'copy') {
+        Clipboard.setData(ClipboardData(text: toCopy));
+      } else if (value == 'view' && hasGeom) {
+        showDialog(
+          context: context,
+          builder: (_) => GeometryPreviewDialog(wkts: selectedWkts),
+        );
+      }
+    });
+  }
+
+  /// Returns WKT strings for every selected cell that contains geometry.
+  List<String> _selectedGeomWkts() {
+    final rows = widget.result!.rows;
+    final wkts = <String>[];
+    for (final (r, c) in _selected) {
+      final raw = c < rows[r].length ? rows[r][c] : null;
+      final w = wkbToWkt(raw);
+      if (w != null) wkts.add(w);
+    }
+    return wkts;
+  }
+
+  /// Builds tab-separated (TSV) text from the current selection, row by row.
+  String _selectedAsTsv() {
+    final rows = widget.result!.rows;
+    final byRow = <int, List<int>>{};
+    for (final (r, c) in _selected) {
+      byRow.putIfAbsent(r, () => []).add(c);
+    }
+    return (byRow.keys.toList()..sort())
+        .map((r) => (byRow[r]!..sort()).map((c) {
+              final raw = c < rows[r].length ? rows[r][c] : null;
+              return wkbToWkt(raw) ?? raw?.toString() ?? '';
+            }).join('\t'))
+        .join('\n');
   }
 
   String _format(dynamic value, String? wkt) {
@@ -194,25 +404,5 @@ class _ResultsBody extends StatelessWidget {
     final s = wkt ?? value.toString();
     if (s.length > 80) return '${s.substring(0, 77)}…';
     return s;
-  }
-}
-
-class _CellText extends StatelessWidget {
-  final String text;
-  const _CellText(this.text);
-
-  @override
-  Widget build(BuildContext context) {
-    final isNull = text == 'NULL';
-    return Text(
-      text,
-      style: TextStyle(
-        fontSize: 12,
-        fontFamily: 'monospace',
-        color: isNull ? const Color(0xFFBBBBCC) : const Color(0xFF212121),
-        fontStyle: isNull ? FontStyle.italic : FontStyle.normal,
-      ),
-      overflow: TextOverflow.ellipsis,
-    );
   }
 }

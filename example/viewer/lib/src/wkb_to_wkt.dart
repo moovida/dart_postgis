@@ -3,11 +3,21 @@ import 'package:dart_postgis/dart_postgis.dart' as pg;
 
 /// Converts a raw geometry value from PostgreSQL to WKT.
 ///
-/// [raw] may be a binary [Uint8List] (returned by the extended query protocol
-/// for unknown OIDs) or a hex-encoded WKB [String] (returned by simple
-/// queries). Returns null if [raw] is not WKB geometry.
+/// Handles three cases:
+///  - Already a WKT string (e.g. result of ST_AsText) — returned as-is.
+///  - Binary [Uint8List] EWKB (extended query protocol for unknown OIDs).
+///  - Hex-encoded EWKB [String] (simple query / text protocol).
+///
+/// Returns null if [raw] is not recognisable as geometry.
 String? wkbToWkt(dynamic raw) {
   if (raw == null) return null;
+
+  // Already a WKT string (produced by ST_AsText on the server side)
+  if (raw is String) {
+    final trimmed = raw.trimLeft();
+    if (_isWktPrefix(trimmed)) return raw;
+  }
+
   try {
     late List<int> bytes;
     if (raw is Uint8List) {
@@ -29,6 +39,12 @@ String? wkbToWkt(dynamic raw) {
     return null;
   }
 }
+
+final _wktPrefixRe = RegExp(
+    r'^(POINT|LINESTRING|POLYGON|MULTIPOINT|MULTILINESTRING|MULTIPOLYGON|GEOMETRYCOLLECTION)',
+    caseSensitive: false);
+
+bool _isWktPrefix(String s) => _wktPrefixRe.hasMatch(s);
 
 bool _isAllHex(String s) {
   for (final c in s.codeUnits) {

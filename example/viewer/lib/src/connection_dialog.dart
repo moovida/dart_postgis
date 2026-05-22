@@ -118,7 +118,7 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
       backgroundColor: Colors.white,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       child: SizedBox(
-        width: 440,
+        width: 560,
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Form(

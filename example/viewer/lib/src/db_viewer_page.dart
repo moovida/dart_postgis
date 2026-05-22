@@ -130,6 +130,12 @@ class _Toolbar extends StatelessWidget {
               tooltip: 'Refresh tree',
               color: Colors.white70,
             ),
+            IconButton(
+              onPressed: () => _showSwitchDb(context, state),
+              icon: const Icon(Icons.swap_horiz, size: 18),
+              tooltip: 'Switch database',
+              color: Colors.white70,
+            ),
             OutlinedButton.icon(
               onPressed: () => state.disconnect(),
               icon: const Icon(Icons.link_off, size: 16),
@@ -154,6 +160,151 @@ class _Toolbar extends StatelessWidget {
       builder: (_) => ChangeNotifierProvider.value(
         value: context.read<AppState>(),
         child: const ConnectionDialog(),
+      ),
+    );
+  }
+
+  Future<void> _showSwitchDb(BuildContext context, AppState state) async {
+    final dbs = await state.listDatabases();
+    if (!context.mounted) return;
+    final selected = await showDialog<String>(
+      context: context,
+      builder: (_) => _SwitchDbDialog(
+        databases: dbs,
+        currentDb: state.currentDbName,
+      ),
+    );
+    if (selected != null) state.switchDatabase(selected);
+  }
+}
+
+class _SwitchDbDialog extends StatelessWidget {
+  final List<String> databases;
+  final String currentDb;
+  const _SwitchDbDialog({required this.databases, required this.currentDb});
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      child: SizedBox(
+        width: 320,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Header
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: const BoxDecoration(
+                color: Color(0xFF1565C0),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.swap_horiz, color: Colors.white, size: 18),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text('Switch database',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14)),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close, size: 18),
+                    color: Colors.white,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                ],
+              ),
+            ),
+            if (databases.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(20),
+                child: Text('No databases found.',
+                    style: TextStyle(color: Color(0xFF9E9E9E), fontSize: 13)),
+              )
+            else
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 360),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: databases.length,
+                  itemBuilder: (_, i) {
+                    final db = databases[i];
+                    final isCurrent = db == currentDb;
+                    return InkWell(
+                      onTap: isCurrent
+                          ? null
+                          : () => Navigator.of(context).pop(db),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 10),
+                        color: isCurrent
+                            ? const Color(0xFFE8EFF7)
+                            : Colors.transparent,
+                        child: Row(
+                          children: [
+                            Icon(
+                              isCurrent
+                                  ? Icons.check_circle
+                                  : Icons.circle_outlined,
+                              size: 15,
+                              color: isCurrent
+                                  ? const Color(0xFF1565C0)
+                                  : const Color(0xFFCCCCDD),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                db,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontFamily: 'monospace',
+                                  color: isCurrent
+                                      ? const Color(0xFF1565C0)
+                                      : const Color(0xFF212121),
+                                  fontWeight: isCurrent
+                                      ? FontWeight.w600
+                                      : FontWeight.normal,
+                                ),
+                              ),
+                            ),
+                            if (isCurrent)
+                              const Padding(
+                                padding: EdgeInsets.only(left: 6),
+                                child: Text('(current)',
+                                    style: TextStyle(
+                                        fontSize: 11,
+                                        color: Color(0xFF9E9E9E))),
+                              ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            const Divider(height: 1),
+            Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancel'),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
