@@ -373,6 +373,10 @@ class PostgisDb {
     return await _postgresDb.getTables(doOrder: doOrder);
   }
 
+  Future<List<SqlName>> getSchemas({bool doOrder = false}) async {
+    return await _postgresDb.getSchemas(doOrder: doOrder);
+  }
+
   Future<bool> hasTable(TableName tableName) async {
     return await _postgresDb.hasTable(tableName);
   }
