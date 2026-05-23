@@ -59,7 +59,6 @@ class PostgisDb {
       timeZone: timeZone,
       useSSL: useSSL,
       isUnixSocket: isUnixSocket,
-      allowClearTextPassword: allowClearTextPassword,
     );
     if (!opened) {
       return false;
@@ -356,7 +355,7 @@ class PostgisDb {
       res.forEach((QueryResultRow map) {
         var geomBytes = map.getAt(0);
         if (geomBytes != null) {
-          Geometry geom = BinaryParser().parse(geomBytes);
+          Geometry geom = BinaryParser().parse(geomBytes.bytes);
           var pkValue = map.getAt(1);
           if (userDataField != null) {
             geom.setUserData(map.getAt(2));
@@ -448,7 +447,7 @@ class PostgisDb {
 
         var geomBytes = map.get(queryResult.geomName!);
         if (geomBytes != null) {
-          Geometry geom = BinaryParser().parse(geomBytes);
+          Geometry geom = BinaryParser().parse(geomBytes.bytes);
           feature.geometry = geom;
         }
         map.forEach((k, v) {

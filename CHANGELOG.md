@@ -1,3 +1,7 @@
+## 0.3.4
+
+- Fixes to parse geometries with upgraded postgres libs (major version).
+
 ## 0.3.3+1/3
 
 - Add check for can create table.
